@@ -138,6 +138,18 @@ python brain_eval.py ../samples/shelf.jpg --server http://127.0.0.1:18500
 - 在外面使用需要自己搭内网穿透，电脑也要开着；隧道服务商会中转流量（照片也在其中），在意的话用自建的 frp 或 https 隧道。
 - 鸿蒙端需要在 HBuilderX 里配置 DevEco Studio 后编译；iOS 未测试。
 
+## 灵感与致谢
+
+**灵感**：这个点子最早来自网上的一条短视频，有人做过用手机拍货架、识别出快递的小工具。那个是一次性的识别展示，不是 Agent。找件在这个想法上做成了一个完整的 Agent：理解你说的取件码，判断照片能不能用，决定先看哪里，读到就停，自己复核，发现指错了会改主意，找不到会怀疑是不是读错了一位，并且全部由本地模型完成。（原视频没能找回出处，找到后会补上。）
+
+**用到的开源项目和模型**，各自按其许可协议使用，本仓库不包含任何模型文件：
+
+- [MiniCPM-V 4.7](https://github.com/OpenBMB/MiniCPM-V)（OpenBMB）：看、读、指、复核，全部视觉判断
+- [llama.cpp](https://github.com/ggml-org/llama.cpp)：在本地电脑上运行 MiniCPM-V
+- [SenseVoice](https://github.com/FunAudioLLM/SenseVoice)（FunAudioLLM）与 [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx)：本地语音识别
+- [faster-whisper](https://github.com/SYSTRAN/faster-whisper)：备用语音识别和音频解码
+- [uni-app x](https://doc.dcloud.net.cn/uni-app-x/)（DCloud）：安卓 / 鸿蒙客户端
+
 ## 许可
 
 MIT
