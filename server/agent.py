@@ -317,6 +317,38 @@ def narrow_by_grid(brain, photo, region, code, min_size=110):
     return region
 
 
+def relocate(brain, photo, tile, code, wrong=None):
+    """Pointing landed on the wrong label. Returns (region, confirmed).
+
+    Cut the tile into four overlapping quarters and read them nearest-first to where the model
+    pointed (it is usually off by one parcel); in the first quarter that shows the code, point
+    again and re-read. A quarter holds far fewer labels, so pointing there is much surer.
+    Only if that fails, fall back to splitting the quarter 3x3 until it is about one label.
+    """
+    W, H = photo.size
+    x0, y0, x1, y1 = tile
+    hw, hh = (x1 - x0) / 2, (y1 - y0) / 2
+    quarters = [(int(max(x0, x0 + c * hw - hw * .3)), int(max(y0, y0 + r * hh - hh * .3)),
+                 int(min(x1, x0 + (c + 1) * hw + hw * .3)), int(min(y1, y0 + (r + 1) * hh + hh * .3)))
+                for r in range(2) for c in range(2)]
+    if wrong:
+        wx, wy = (wrong[0] + wrong[2]) / 2, (wrong[1] + wrong[3]) / 2
+        quarters.sort(key=lambda q: ((q[0] + q[2]) / 2 - wx) ** 2 + ((q[1] + q[3]) / 2 - wy) ** 2)
+    for q in quarters:
+        if code not in _codes(brain.ask(P_READ, photo.crop(q))):
+            continue
+        box = point_at(brain, photo, q, code)
+        if box:
+            region = padded(box, W, H)
+            again = _codes(brain.ask(P_READ, photo.crop(region)))
+            if code in again and len(again) <= 2:
+                return region, True
+        region = padded(narrow_by_grid(brain, photo, q, code), W, H, frac=0.1, least=12)
+        return region, code in _codes(brain.ask(P_READ, photo.crop(region)))
+    region = padded(narrow_by_grid(brain, photo, tile, code), W, H, frac=0.1, least=12)
+    return region, code in _codes(brain.ask(P_READ, photo.crop(region)))
+
+
 def annotate(photo, marks, path):
     """Circle each mark. Sizes scale with the photo so the ring still reads on a phone-width view."""
     out = photo.copy()
@@ -483,13 +515,11 @@ def run_photo(brain, task, photo, emit, annotated_path, force=False):
             continue
 
         turns += 1
-        emit("turn", (f"指的位置读出来是 {'、'.join(again)}，对不上。" if again else "没能指出准确位置。") + "改用逐块缩小的办法重新定位。")
-        emit("act", "逐块缩小()", tile=rel(seen[code][0]))
-        region = padded(narrow_by_grid(brain, photo, seen[code][0], code), W, H, frac=0.1, least=12)
-        emit("act", "复核()", box=rel(region))
-        again = _codes(brain.ask(P_READ, photo.crop(region)))
-        ok = code in again
-        emit("see", f"缩小后再读，{'仍是 ' + code + '，确认' if ok else '读到 ' + ('、'.join(again) or '空') + '，没能确认'}。", box=rel(region))
+        emit("turn", (f"指的位置读出来是 {'、'.join(again)}，对不上。" if again else "没能指出准确位置。")
+             + "应该就在旁边：把这一块切成四份，从刚才指的地方附近读起，在小范围里重新指。")
+        emit("act", "缩小范围重新指()", tile=rel(seen[code][0]))
+        region, ok = relocate(brain, photo, seen[code][0], code, box)
+        emit("see", f"缩小范围后再读，{'是 ' + code + '，确认' if ok else '没能确认'}。", box=rel(region))
         marks.append({"tail": code, "box": region, "verified": ok})
         p["status"], p["note"] = ("found", "缩小范围后确认") if ok else ("pending", "位置不确定，已用橙色圈出，请自己核对")
 
