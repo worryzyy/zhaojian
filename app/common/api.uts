@@ -1,0 +1,251 @@
+// Calls to the agent service running on the user's own computer.
+// Each call has its own function (no shared generic helper) so the typed JSON parse
+// knows the concrete response type on every platform.
+
+import { Health, Task, EventsRes, PhotoStart, VoiceRes, HistoryRes } from './types.uts'
+
+const DEFAULT_SERVER = 'http://192.168.1.100:18600'
+
+function readString(name : string) : string {
+	const v = uni.getStorageSync(name)
+	if (v != null && typeof v == 'string') {
+		return v as string
+	}
+	return ''
+}
+
+export function getServer() : string {
+	const v = readString('parcel_server')
+	if (v.length > 0) {
+		return v
+	}
+	return DEFAULT_SERVER
+}
+
+export function setServer(value : string) {
+	let v = value.trim()
+	while (v.endsWith('/')) {
+		v = v.substring(0, v.length - 1)
+	}
+	uni.setStorageSync('parcel_server', v)
+}
+
+export function getKey() : string {
+	return readString('parcel_key')
+}
+
+export function setKey(value : string) {
+	uni.setStorageSync('parcel_key', value.trim())
+}
+
+/** Image URLs cannot carry a header, so the key goes in the query string. */
+export function withKey(url : string) : string {
+	const k = getKey()
+	if (k.length == 0) {
+		return url
+	}
+	return url + (url.indexOf('?') >= 0 ? '&' : '?') + 'key=' + encodeURIComponent(k)
+}
+
+export const TASK_GONE = '电脑上找不到这个任务了，请重新告诉我取件码'
+
+function failText(status : number) : string {
+	if (status == 401) {
+		return '访问口令不对或还没填，点右上角设置'
+	}
+	if (status == 404) {
+		return TASK_GONE
+	}
+	return '电脑上的服务返回了错误 ' + status
+}
+
+/**
+ * One request, answered as text. The body is parsed by the caller, so a refusal such as
+ * "wrong key" is reported by its status code instead of failing as unreadable JSON.
+ */
+function requestText(url : string, method : RequestMethod, body : UTSJSONObject | null, timeout : number) : Promise<string> {
+	return new Promise<string>((resolve, reject) => {
+		uni.request<string>({
+			url: url,
+			method: method,
+			header: { 'X-Key': getKey(), 'Content-Type': 'application/json' },
+			data: body,
+			dataType: 'text',
+			timeout: timeout,
+			success: (res) => {
+				const d = res.data
+				if (res.statusCode == 200 && d != null) {
+					resolve(d)
+				} else {
+					reject(new Error(failText(res.statusCode)))
+				}
+			},
+			fail: (e) => {
+				reject(new Error('连不上 ' + getServer() + '（' + e.errMsg + '）'))
+			}
+		})
+	})
+}
+
+const UNREADABLE = '电脑返回的内容看不懂，可能服务版本不一致'
+
+export function fetchHealth() : Promise<Health> {
+	return requestText(getServer() + '/api/health', 'GET', null, 6000).then((s : string) : Health => {
+		const d = JSON.parse<Health>(s)
+		if (d == null) {
+			throw new Error(UNREADABLE)
+		}
+		return d
+	})
+}
+
+export function createTask(text : string) : Promise<Task> {
+	return requestText(getServer() + '/api/tasks', 'POST', { text: text }, 60000).then((s : string) : Task => {
+		const d = JSON.parse<Task>(s)
+		if (d == null) {
+			throw new Error(UNREADABLE)
+		}
+		return d
+	})
+}
+
+export function addCodes(taskId : string, text : string) : Promise<Task> {
+	return requestText(getServer() + '/api/tasks/' + taskId + '/codes', 'POST', { text: text }, 60000).then((s : string) : Task => {
+		const d = JSON.parse<Task>(s)
+		if (d == null) {
+			throw new Error(UNREADABLE)
+		}
+		return d
+	})
+}
+
+export function uploadPhoto(taskId : string, filePath : string) : Promise<PhotoStart> {
+	return new Promise<PhotoStart>((resolve, reject) => {
+		uni.uploadFile({
+			url: getServer() + '/api/tasks/' + taskId + '/photos',
+			filePath: filePath,
+			name: 'file',
+			header: { 'X-Key': getKey() },
+			success: (res) => {
+				if (res.statusCode != 200) {
+					reject(new Error(failText(res.statusCode)))
+					return
+				}
+				const d = JSON.parse<PhotoStart>(res.data)
+				if (d == null) {
+					reject(new Error(UNREADABLE))
+				} else {
+					resolve(d)
+				}
+			},
+			fail: (e) => {
+				reject(new Error(e.errMsg))
+			}
+		})
+	})
+}
+
+/** Parcels found so far, newest first. */
+export function fetchHistory() : Promise<HistoryRes> {
+	return requestText(getServer() + '/api/history', 'GET', null, 15000).then((s : string) : HistoryRes => {
+		const d = JSON.parse<HistoryRes>(s)
+		if (d == null) {
+			throw new Error(UNREADABLE)
+		}
+		return d
+	})
+}
+
+/** Cross a parcel off the list. */
+export function removeCode(taskId : string, code : string) : Promise<Task> {
+	return requestText(getServer() + '/api/tasks/' + taskId + '/remove', 'POST', { code: code }, 15000).then((s : string) : Task => {
+		const d = JSON.parse<Task>(s)
+		if (d == null) {
+			throw new Error(UNREADABLE)
+		}
+		return d
+	})
+}
+
+/** A picture of the pickup message (screenshot or photo). Pass '' as taskId to start a new task. */
+export function uploadCodeImage(taskId : string, filePath : string) : Promise<Task> {
+	return new Promise<Task>((resolve, reject) => {
+		uni.uploadFile({
+			url: getServer() + '/api/tasks/image' + (taskId.length > 0 ? '?task=' + taskId : ''),
+			filePath: filePath,
+			name: 'file',
+			header: { 'X-Key': getKey() },
+			success: (res) => {
+				if (res.statusCode != 200) {
+					reject(new Error(failText(res.statusCode)))
+					return
+				}
+				const d = JSON.parse<Task>(res.data)
+				if (d == null) {
+					reject(new Error(UNREADABLE))
+				} else {
+					resolve(d)
+				}
+			},
+			fail: (e) => {
+				reject(new Error(e.errMsg))
+			}
+		})
+	})
+}
+
+/** A short voice recording; the computer turns it into text locally. */
+export function uploadVoice(filePath : string) : Promise<VoiceRes> {
+	return new Promise<VoiceRes>((resolve, reject) => {
+		uni.uploadFile({
+			url: getServer() + '/api/voice',
+			filePath: filePath,
+			name: 'file',
+			header: { 'X-Key': getKey() },
+			success: (res) => {
+				if (res.statusCode == 501) {
+					reject(new Error('电脑上还没装语音识别'))
+					return
+				}
+				if (res.statusCode != 200) {
+					reject(new Error(failText(res.statusCode)))
+					return
+				}
+				const d = JSON.parse<VoiceRes>(res.data)
+				if (d == null) {
+					reject(new Error(UNREADABLE))
+				} else {
+					resolve(d)
+				}
+			},
+			fail: (e) => {
+				reject(new Error(e.errMsg))
+			}
+		})
+	})
+}
+
+/** Re-run the same photo, telling the agent to search it whatever the shelf sign says. */
+export function forcePhoto(photoId : string) : Promise<PhotoStart> {
+	return requestText(getServer() + '/api/photos/' + photoId + '/force', 'POST', {}, 30000).then((s : string) : PhotoStart => {
+		const d = JSON.parse<PhotoStart>(s)
+		if (d == null) {
+			throw new Error(UNREADABLE)
+		}
+		return d
+	})
+}
+
+export function fetchEvents(photoId : string, after : number) : Promise<EventsRes> {
+	return requestText(getServer() + '/api/photos/' + photoId + '/events?after=' + after, 'GET', null, 30000).then((s : string) : EventsRes => {
+		const d = JSON.parse<EventsRes>(s)
+		if (d == null) {
+			throw new Error(UNREADABLE)
+		}
+		return d
+	})
+}
+
+export function annotatedUrl(photoId : string) : string {
+	return withKey(getServer() + '/api/photos/' + photoId + '/annotated.jpg')
+}

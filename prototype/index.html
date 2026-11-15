@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>找件 App 原型</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=Noto+Sans+SC:wght@400;500;700;900&display=swap">
+<style>
+/* Layout: the app screen is the page. On wide screens it sits in a device frame beside notes on where the agent shows. */
+:root {
+  --page: #dfe5ee;
+  --app: #f4f6fa;
+  --card: #ffffff;
+  --ink: #111a26;
+  --muted: #6a7686;
+  --faint: #9aa5b3;
+  --line: #e4e9f0;
+  --blue: #1b5fd9;         /* shelf-number strip blue */
+  --blue-soft: #e8f0ff;
+  --mark: #ef2b2d;         /* marker-pen red */
+  --mark-soft: #ffe9e9;
+  --ok: #12855a;
+  --ok-soft: #e3f6ee;
+  --warn: #b45f06;
+  --warn-soft: #fff1dc;
+  --steel: #aeb7c2;
+  --steel-deep: #7d8793;
+  --f-body: "Noto Sans SC", "PingFang SC", "HarmonyOS Sans SC", "Microsoft YaHei", system-ui, sans-serif;
+  --f-code: "Barlow Condensed", "DIN Alternate", "Arial Narrow", sans-serif;
+  --r-card: 18px;
+}
+* { box-sizing: border-box; margin: 0; }
+html, body { height: 100%; }
+body {
+  font-family: var(--f-body); font-size: 15px; line-height: 1.5; color: var(--ink);
+  background: radial-gradient(1200px 700px at 20% 0%, #eef3fa 0%, var(--page) 60%);
+  display: flex; align-items: center; justify-content: center; gap: 56px; flex-wrap: wrap;
+  padding: 28px max(16px, env(safe-area-inset-right)) 28px max(16px, env(safe-area-inset-left));
+}
+button { font: inherit; color: inherit; cursor: pointer; border: 0; background: none; }
+button:focus-visible, input:focus-visible { outline: 3px solid var(--mark); outline-offset: 2px; }
+code, .num { font-family: var(--f-code); font-weight: 700; font-size: 1.15em; letter-spacing: .04em; }
+
+/* ---------- device ---------- */
+.phone {
+  width: 390px; max-width: 100%; height: 812px; max-height: calc(100vh - 56px); min-height: 640px;
+  background: #0b0f15; border-radius: 46px; padding: 10px; flex: none;
+  box-shadow: 0 40px 80px -30px rgba(17, 26, 38, .45), 0 0 0 1px rgba(0, 0, 0, .08);
+}
+.screen { position: relative; height: 100%; border-radius: 37px; overflow: hidden; background: var(--app); display: flex; flex-direction: column; }
+.status { display: flex; justify-content: space-between; align-items: center; padding: 12px 26px 4px; font-size: 13px; font-weight: 700; flex: none; }
+.status i { display: block; width: 92px; height: 24px; border-radius: 14px; background: #0b0f15; }
+.status span:last-child { font-weight: 500; font-size: 12px; }
+.head { padding: 8px 20px 10px; display: flex; align-items: center; justify-content: space-between; gap: 10px; flex: none; }
+.head h1 { font-size: 26px; font-weight: 900; letter-spacing: .02em; line-height: 1.15; }
+.head p { font-size: 12.5px; color: var(--muted); }
+.pill { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 500; padding: 5px 10px; border-radius: 99px; background: var(--ok-soft); color: var(--ok); white-space: nowrap; }
+.pill::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; box-shadow: 0 0 0 3px rgba(18, 133, 90, .18); }
+.back { width: 38px; height: 38px; border-radius: 50%; background: var(--card); box-shadow: 0 1px 2px rgba(17, 26, 38, .08); font-size: 20px; line-height: 1; }
+.body { flex: 1; overflow-y: auto; padding: 4px 16px 16px; display: flex; flex-direction: column; gap: 12px; scrollbar-width: none; min-height: 0; }
+.body::-webkit-scrollbar { display: none; }
+.cta { flex: none; padding: 10px 16px calc(16px + env(safe-area-inset-bottom)); background: linear-gradient(to top, var(--app) 70%, transparent); }
+.btn-main {
+  width: 100%; padding: 15px; border-radius: 16px; font-size: 17px; font-weight: 700; color: #fff; letter-spacing: .04em;
+  background: linear-gradient(180deg, #2b70ea, var(--blue)); box-shadow: 0 10px 22px -8px rgba(27, 95, 217, .7), inset 0 1px 0 rgba(255, 255, 255, .25);
+  transition: transform .12s ease;
+}
+.btn-main:active { transform: scale(.98); }
+.btn-main[disabled] { background: var(--steel); box-shadow: none; cursor: default; }
+.btn-main small { display: block; font-size: 12px; font-weight: 400; opacity: .85; letter-spacing: 0; }
+.note { text-align: center; font-size: 12px; color: var(--faint); margin-top: 8px; }
+
+/* ---------- conversation ---------- */
+.me, .ai { max-width: 88%; padding: 10px 13px; font-size: 14.5px; animation: rise .3s ease both; }
+.me { align-self: flex-end; background: var(--blue); color: #fff; border-radius: 18px 18px 4px 18px; }
+.me q { display: block; quotes: none; margin-top: 7px; padding: 7px 9px; border-radius: 10px; background: rgba(255, 255, 255, .16); font-size: 12.5px; }
+.ai { align-self: stretch; max-width: none; background: var(--card); border-radius: 4px 18px 18px 18px; box-shadow: 0 1px 2px rgba(17, 26, 38, .06), 0 10px 22px -16px rgba(17, 26, 38, .3); display: flex; flex-direction: column; gap: 10px; }
+.ai .name { font-size: 11.5px; font-weight: 700; color: var(--blue); letter-spacing: .08em; }
+.ai h3 { font-size: 12.5px; font-weight: 700; color: var(--muted); letter-spacing: .06em; }
+@keyframes rise { from { opacity: 0; transform: translateY(6px); } }
+
+.ticket { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 12px; background: var(--app); border-radius: 12px; padding: 8px 10px; }
+.label { width: 76px; background: #fff; border: 1.5px solid #111; border-radius: 4px; padding: 4px 6px 2px; text-align: center; color: #111; }
+.label::before { content: ""; display: block; height: 10px; background: repeating-linear-gradient(90deg, #111 0 2px, transparent 2px 3px, #111 3px 4px, transparent 4px 7px, #111 7px 10px, transparent 10px 12px); }
+.label b { display: block; font-family: var(--f-code); font-weight: 700; font-size: 25px; line-height: 1.05; }
+.ticket .where b { display: block; font-size: 14.5px; }
+.ticket .where span { color: var(--muted); font-family: var(--f-code); font-size: 14px; letter-spacing: .06em; }
+.state { font-size: 11.5px; font-weight: 700; padding: 3px 8px; border-radius: 99px; background: var(--blue-soft); color: var(--blue); white-space: nowrap; }
+.state.ok { background: var(--ok-soft); color: var(--ok); }
+.state.go { background: var(--warn-soft); color: var(--warn); }
+.x { width: 28px; height: 28px; border-radius: 50%; color: var(--faint); font-size: 17px; }
+.ticket.done .label { opacity: .45; }
+.plan { list-style: none; padding: 0; display: flex; flex-direction: column; gap: 6px; counter-reset: p; }
+.plan li { counter-increment: p; display: grid; grid-template-columns: 20px 1fr; gap: 8px; font-size: 13.5px; }
+.plan li::before { content: counter(p); width: 20px; height: 20px; border-radius: 50%; background: var(--blue-soft); color: var(--blue); font-size: 11.5px; font-weight: 700; display: grid; place-items: center; margin-top: 1px; }
+.say { display: flex; gap: 8px; background: var(--card); border-radius: 14px; padding: 5px 5px 5px 14px; align-items: center; box-shadow: 0 1px 2px rgba(17, 26, 38, .06); margin-bottom: 10px; }
+.say input { flex: 1; min-width: 0; border: 0; background: none; font: inherit; color: var(--ink); padding: 8px 0; }
+.say input::placeholder { color: var(--faint); }
+.say button { padding: 8px 14px; border-radius: 10px; background: var(--ink); color: #fff; font-weight: 700; font-size: 13.5px; }
+
+/* ---------- shelf photo ---------- */
+.photo { position: relative; border-radius: var(--r-card); overflow: hidden; flex: none; background: linear-gradient(180deg, #cfd5dc, #b9c0c9 55%, #a9b1bb); padding: 12px 12px 0; box-shadow: 0 10px 24px -16px rgba(17, 26, 38, .5); }
+.photo::before, .photo::after { content: ""; position: absolute; top: 0; bottom: 0; width: 7px; background: linear-gradient(90deg, var(--steel-deep), #c8cfd8 45%, var(--steel-deep)); z-index: 1; }
+.photo::before { left: 4px; } .photo::after { right: 4px; }
+.layer { display: flex; align-items: flex-end; gap: 4px; padding: 0 6px; height: 56px; }
+.pk { position: relative; flex: 1; min-width: 0; height: var(--h, 86%); border-radius: 2px 2px 1px 1px; background: linear-gradient(180deg, #d8ad79, #c2925c); box-shadow: inset 0 -6px 8px -6px rgba(60, 35, 10, .45), 0 2px 3px rgba(17, 26, 38, .25); display: flex; align-items: center; justify-content: center; transition: opacity .4s ease, filter .4s ease; }
+.pk::before { content: ""; position: absolute; left: 0; right: 0; top: 34%; height: 5px; background: rgba(255, 255, 255, .28); }
+.pk.poly { background: linear-gradient(160deg, #eceff3, #c3cad3); border-radius: 7px 10px 5px 8px; }
+.pk.dark { background: linear-gradient(160deg, #4a515b, #2b3038); border-radius: 8px 6px 9px 5px; }
+.pk.poly::before, .pk.dark::before { display: none; }
+.pk s { position: relative; text-decoration: none; background: #fff; color: #111; border-radius: 1.5px; padding: 2px 3px 1px; transform: rotate(var(--r, 0deg)); box-shadow: 0 1px 1px rgba(0, 0, 0, .25); }
+.pk s::before { content: ""; display: block; height: 4px; margin-bottom: 1px; background: repeating-linear-gradient(90deg, #111 0 1px, transparent 1px 2px, #111 2px 4px, transparent 4px 5px); }
+.pk s b { display: block; font-family: var(--f-code); font-weight: 700; font-size: 15px; line-height: 1; }
+.board { position: relative; z-index: 2; height: 20px; margin: 0 -12px 8px; background: linear-gradient(180deg, #e9edf2, #b8c0ca 35%, #8c96a2); display: flex; justify-content: center; align-items: center; box-shadow: 0 6px 8px -4px rgba(17, 26, 38, .4); }
+.strip { display: flex; align-items: center; gap: 5px; background: var(--blue); color: #fff; font-size: 9px; padding: 2px 8px; border-radius: 2px; height: 16px; }
+.strip b { font-family: var(--f-code); font-size: 15px; line-height: 1; background: #fff; color: var(--mark); padding: 0 5px; border-radius: 1.5px; }
+.photo.glare .strip { filter: blur(2.2px) brightness(1.5); }
+.photo.glare::after { width: auto; left: 0; right: 0; background: linear-gradient(115deg, transparent 35%, rgba(255, 255, 255, .7) 50%, transparent 65%); z-index: 3; }
+.photo.dim .pk:not(.hit) { opacity: .38; filter: saturate(.4); }
+.tile { position: absolute; z-index: 3; border: 2px solid #fff; border-radius: 8px; box-shadow: 0 0 0 2px var(--blue), 0 0 0 999px rgba(11, 15, 21, .34); transition: all .42s cubic-bezier(.3, .8, .3, 1); pointer-events: none; overflow: hidden; }
+.tile.bad { box-shadow: 0 0 0 2px var(--mark), 0 0 0 999px rgba(11, 15, 21, .34); }
+.tile::after { content: ""; position: absolute; left: 0; right: 0; height: 40%; background: linear-gradient(180deg, transparent, rgba(255, 255, 255, .55)); animation: sweep 1s linear infinite; }
+@keyframes sweep { from { top: -40%; } to { top: 100%; } }
+.ring { position: absolute; z-index: 4; pointer-events: none; overflow: visible; }
+.ring ellipse { fill: none; stroke: var(--mark); stroke-width: 4; stroke-linecap: round; stroke-dasharray: 400; stroke-dashoffset: 400; animation: draw .7s .15s ease-out forwards; }
+@keyframes draw { to { stroke-dashoffset: 0; } }
+.flag { position: absolute; z-index: 5; transform: translate(-50%, -100%); background: var(--mark); color: #fff; font-family: var(--f-code); font-weight: 700; font-size: 17px; line-height: 1; padding: 3px 8px; border-radius: 6px; box-shadow: 0 4px 10px -3px rgba(239, 43, 45, .7); }
+.flag::after { content: ""; position: absolute; left: 50%; bottom: -5px; margin-left: -5px; border: 5px solid transparent; border-top-color: var(--mark); border-bottom: 0; }
+
+/* ---------- camera ---------- */
+.screen.cam { background: #0b0f15; color: #fff; }
+.screen.cam .back { background: rgba(255, 255, 255, .14); color: #fff; }
+.finder { position: relative; margin: auto 0; padding: 18px 0; }
+.finder .photo { border-radius: 6px; }
+.corner { position: absolute; width: 26px; height: 26px; border: 3px solid #fff; z-index: 6; }
+.corner.a { left: -6px; top: 8px; border-right: 0; border-bottom: 0; border-radius: 8px 0 0 0; }
+.corner.b { right: -6px; top: 8px; border-left: 0; border-bottom: 0; border-radius: 0 8px 0 0; }
+.corner.c { left: -6px; bottom: 8px; border-right: 0; border-top: 0; border-radius: 0 0 0 8px; }
+.corner.d { right: -6px; bottom: 8px; border-left: 0; border-top: 0; border-radius: 0 0 8px 0; }
+.tip { align-self: center; font-size: 13px; background: rgba(255, 255, 255, .14); padding: 7px 14px; border-radius: 99px; text-align: center; }
+.shutter-row { flex: none; display: grid; place-items: center; padding: 14px 0 calc(26px + env(safe-area-inset-bottom)); }
+.shutter { width: 76px; height: 76px; border-radius: 50%; border: 4px solid #fff; padding: 5px; }
+.shutter::before { content: ""; display: block; width: 100%; height: 100%; border-radius: 50%; background: #fff; transition: transform .12s ease; }
+.shutter:active::before { transform: scale(.88); }
+
+/* ---------- agent trace: think / act / see / change mind / ask ---------- */
+.fixed-photo { flex: none; padding: 0 16px 10px; }
+.trace { list-style: none; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.trace li { display: grid; grid-template-columns: 44px 1fr; gap: 10px; align-items: start; font-size: 13.5px; animation: rise .28s ease both; }
+.trace .k { font-size: 11px; font-weight: 700; text-align: center; border-radius: 6px; padding: 2px 0; margin-top: 1px; letter-spacing: .04em; }
+.trace .think .k { background: #eceff4; color: var(--muted); }
+.trace .think { color: var(--muted); }
+.trace .act .k { background: var(--blue); color: #fff; }
+.trace .act span { display: inline-flex; align-items: center; gap: 6px; background: var(--blue-soft); color: var(--blue); font-weight: 700; padding: 2px 10px; border-radius: 8px; font-family: ui-monospace, "SF Mono", Consolas, monospace; font-size: 12.5px; }
+.trace .act span i { width: 10px; height: 10px; border-radius: 50%; border: 2px solid rgba(27, 95, 217, .25); border-top-color: var(--blue); animation: spin .7s linear infinite; }
+.trace .act.fin span i { display: none; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.trace .see .k { background: var(--ok-soft); color: var(--ok); }
+.trace .see { font-weight: 500; }
+.trace .turn { background: var(--mark-soft); border-radius: 12px; padding: 8px 10px 8px 0; margin: 2px 0; }
+.trace .turn .k { background: var(--mark); color: #fff; margin-left: 8px; }
+.trace .turn { color: #8f1416; font-weight: 500; }
+.trace .ask { background: var(--warn-soft); border-radius: 12px; padding: 10px 10px 10px 0; color: #7a4003; font-weight: 500; }
+.trace .ask .k { background: var(--warn); color: #fff; margin-left: 8px; }
+.trace .ask button { display: block; margin-top: 8px; padding: 8px 14px; border-radius: 10px; background: var(--warn); color: #fff; font-weight: 700; font-size: 13.5px; }
+
+/* ---------- result ---------- */
+.stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.stats div { background: var(--app); border-radius: 12px; padding: 8px 4px; text-align: center; }
+.stats b { display: block; font-family: var(--f-code); font-size: 26px; line-height: 1.1; }
+.stats span { font-size: 11.5px; color: var(--muted); }
+.stats .hot b { color: var(--mark); }
+.allset { text-align: center; padding: 16px 14px; border-radius: var(--r-card); background: linear-gradient(160deg, #12855a, #0c6a47); color: #fff; }
+.allset b { font-size: 21px; font-weight: 900; display: block; letter-spacing: .06em; }
+.allset span { font-size: 13px; opacity: .85; }
+
+/* ---------- notes ---------- */
+.notes { width: 380px; max-width: 100%; display: flex; flex-direction: column; gap: 16px; }
+.notes .tag { align-self: flex-start; font-size: 12px; font-weight: 700; letter-spacing: .08em; color: var(--warn); background: var(--warn-soft); border-radius: 6px; padding: 3px 10px; }
+.notes h2 { font-size: 28px; font-weight: 900; line-height: 1.25; text-wrap: balance; }
+.notes > p { color: var(--muted); font-size: 14px; }
+.flow { list-style: none; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.flow li { padding: 10px 14px; border-radius: 14px; transition: background .2s ease; border-left: 3px solid transparent; }
+.flow li.on { background: var(--card); box-shadow: 0 8px 22px -16px rgba(17, 26, 38, .45); border-left-color: var(--blue); }
+.flow b { display: block; font-size: 15px; }
+.flow span { font-size: 13px; color: var(--muted); }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 10px; font-size: 12.5px; color: var(--muted); }
+.legend span { display: inline-flex; align-items: center; gap: 5px; }
+.legend i { font-style: normal; font-size: 11px; font-weight: 700; border-radius: 5px; padding: 1px 6px; }
+
+@media (max-width: 880px) {
+  body { align-items: flex-start; gap: 24px; }
+  .phone { height: auto; min-height: 0; max-height: none; border-radius: 0; padding: 0; background: none; box-shadow: none; width: 100%; }
+  .screen { border-radius: 22px; min-height: 700px; }
+  .status { display: none; }
+  .head { padding-top: 18px; }
+  .notes { order: 2; width: 100%; }
+}
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } .ring ellipse { stroke-dashoffset: 0; } }
+</style>
+</head>
+<body>
+
+<div class="phone"><div class="screen" id="screen"></div></div>
+
+<aside class="notes">
+  <span class="tag">原型演示 · 示例数据</span>
+  <h2>它不是按顺序跑完一遍，而是每一步看了结果再决定下一步</h2>
+  <p>界面原型，货架和识别过程是模拟的，没有连接真实模型。实际版本里这些判断由你电脑上的 MiniCPM 本地完成。下面是 Agent 在各个界面里的体现。</p>
+  <ol class="flow" id="flow">
+    <li data-s="home"><b>你只说要什么，它自己定计划</b><span>从短信里读出取件码，拆出货架和层，排好先去哪一排</span></li>
+    <li data-s="shoot"><b>它告诉你该拍哪里</b><span>按计划提示下一个货架，而不是让你随便拍</span></li>
+    <li data-s="work"><b>想 → 做 → 看到 → 再决定</b><span>拍错货架就不找；两次读数不一致就不采信、重读；看不清就问你</span></li>
+    <li data-s="result"><b>交付结果，并记得还差什么</b><span>圈出找到的，没找到的带到下一张照片继续</span></li>
+  </ol>
+  <div class="legend">
+    <span><i style="background:#eceff4;color:#6a7686">想</i>它的判断</span>
+    <span><i style="background:#1b5fd9;color:#fff">做</i>调用的工具</span>
+    <span><i style="background:#e3f6ee;color:#12855a">看到</i>工具返回的结果</span>
+    <span><i style="background:#ef2b2d;color:#fff">改主意</i>因结果而改变决定</span>
+    <span><i style="background:#b45f06;color:#fff">问你</i>把问题交还给你</span>
+  </div>
+</aside>
+
+<script>
+const SHELVES = {
+  "8-2": { shelf: 8, level: 2, rows: [
+    ["4009", "1365", "5989", "3897", "4520", "0202"],
+    ["3388", "6489", "9650", "2042", "6269", "3951"],
+    ["0843", "5726", "8203", "3128", "9107", "9442"]] },
+  "6-1": { shelf: 6, level: 1, rows: [
+    ["2805", "9434", "0894", "8932", "5017", "7626"],
+    ["3259", "0045", "0498", "1402", "6103", "4457"]] }
+};
+const ORDER = ["8-2", "6-1"];
+const st = { codes: [{ id: "8-2-5726", done: false }, { id: "6-1-0498", done: false }], shot: 0, run: 0, stats: null, total: { calls: 0, turns: 0, asks: 0 } };
+const screen = document.getElementById("screen");
+const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+const tail = id => id.split("-")[2];
+const keyOf = id => id.split("-").slice(0, 2).join("-");
+const place = id => { const [s, l] = id.split("-"); return `${s} 号货架第 ${l} 层`; };
+const pending = () => st.codes.filter(c => !c.done);
+const curKey = () => ORDER[st.shot % ORDER.length];
+const STATUS = '<div class="status"><span>9:41</span><i></i><span>5G ▮▮▮</span></div>';
+const wait = ms => new Promise(r => setTimeout(r, reduce ? 0 : ms));
+
+function shelfHtml(key, glare) {
+  const s = SHELVES[key]; let n = 0;
+  const kinds = ["", "poly", "", "", "dark", "poly", ""];
+  return `<div class="photo${glare ? " glare" : ""}" id="photo">` + s.rows.map(row =>
+    '<div class="layer">' + row.map(code => {
+      n++;
+      return `<div class="pk ${kinds[(n * 3) % 7]}" data-code="${code}" style="--h:${72 + (n * 29) % 27}%"><s style="--r:${(n * 37) % 11 - 5}deg"><b>${code}</b></s></div>`;
+    }).join("") + '</div>' +
+    `<div class="board"><div class="strip"><span>请核对姓名</span><b>${s.shelf}</b><span>货架号</span><b>-${s.level}</b><span>层号</span></div></div>`
+  ).join("") + '</div>';
+}
+function rectIn(photo, node) {
+  const p = photo.getBoundingClientRect(), r = node.getBoundingClientRect();
+  return { x: r.left - p.left, y: r.top - p.top, w: r.width, h: r.height, pw: p.width, ph: p.height };
+}
+function ticketHtml(c, i, mode) {
+  const right = c.done ? '<span class="state ok">已找到</span>'
+    : mode === "edit" ? `<button class="x" data-del="${i}" aria-label="删除 ${c.id}">×</button>`
+    : mode === "go" ? '<span class="state go">换货架</span>' : '<span class="state">待找</span>';
+  return `<div class="ticket${c.done ? " done" : ""}"><div class="label"><b>${tail(c.id)}</b></div>
+    <div class="where"><b>${place(c.id)}</b><span>${c.id}</span></div>${right}</div>`;
+}
+function go(name) {
+  st.run++;
+  document.querySelectorAll("#flow li").forEach(li => li.classList.toggle("on", li.dataset.s === name));
+  screen.className = "screen" + (name === "shoot" ? " cam" : "");
+  ({ home, shoot, work, result })[name]();
+}
+
+function home() {
+  const todo = pending(), groups = [...new Set(todo.map(c => keyOf(c.id)))];
+  screen.innerHTML = STATUS + `
+    <div class="head"><div><h1>找件</h1><p>告诉我取件码，剩下的交给我</p></div><span class="pill">已连接 · 本地模型</span></div>
+    <div class="body">
+      <div class="me">帮我找这两个快递<q>【菜鸟驿站】您的包裹已到站，取件码 8-2-5726、6-1-0498，请凭码领取。</q></div>
+      <div class="ai"><span class="name">找件助手</span>
+        <div>我从短信里读到 <b>${st.codes.length}</b> 个取件码，取件码的前两段就是货架号和层号：</div>
+        ${st.codes.map((c, i) => ticketHtml(c, i, "edit")).join("")}
+        ${todo.length ? `<h3>我的计划</h3><ol class="plan">${groups.map(g => `<li><div>去 <b>${place(g + "-0")}</b> 拍一张，找 ${todo.filter(c => keyOf(c.id) === g).map(c => `<code>${tail(c.id)}</code>`).join("、")}</div></li>`).join("")}<li><div>每找到一个都再读一遍确认，全部找齐才算完成</div></li></ol>
+        <div>先拍 <b>${place(groups[0] + "-0")}</b> 给我。</div>` : "<div>没有要找的快递了。</div>"}
+      </div>
+    </div>
+    <div class="cta">
+      <div class="say"><input id="code-input" type="text" placeholder="还要取别的？说取件码，如 8-2-9442" autocomplete="off"><button id="add">发送</button></div>
+      <button class="btn-main" id="start" ${todo.length ? "" : "disabled"}>拍货架</button></div>`;
+  const input = screen.querySelector("#code-input");
+  screen.querySelector("#add").onclick = () => {
+    const v = (input.value.match(/\d+-\d+-\d{4}/) || [""])[0];
+    if (v && SHELVES[keyOf(v)] && !st.codes.some(c => c.id === v)) { st.codes.push({ id: v, done: false }); home(); }
+    else { input.value = ""; input.placeholder = "原型里可试 8-2-9442 或 6-1-1402"; }
+  };
+  screen.querySelectorAll("[data-del]").forEach(b => b.onclick = () => { st.codes.splice(+b.dataset.del, 1); home(); });
+  screen.querySelector("#start").onclick = () => go("shoot");
+}
+
+function shoot() {
+  const key = curKey(), want = pending().filter(c => keyOf(c.id) === key);
+  screen.innerHTML = STATUS + `
+    <div class="head"><button class="back" id="back" aria-label="返回">‹</button><span class="tip">还差 ${pending().length} 件</span></div>
+    <div class="body"><div class="tip">按计划，这一张拍 <b>${place(key + "-0")}</b>${want.length ? "，找 " + want.map(c => tail(c.id)).join("、") : ""}</div>
+      <div class="finder">${shelfHtml(key)}<i class="corner a"></i><i class="corner b"></i><i class="corner c"></i><i class="corner d"></i></div>
+      <div class="tip">把整层货架和蓝色标牌一起拍进来</div></div>
+    <div class="shutter-row"><button class="shutter" id="snap" aria-label="拍照"></button></div>`;
+  screen.querySelector("#back").onclick = () => go("home");
+  screen.querySelector("#snap").onclick = () => go("work");
+}
+
+async function work() {
+  const my = st.run, alive = () => my === st.run;
+  const key = curKey(), s = SHELVES[key], glareFirst = st.shot % ORDER.length === 1;
+  const here = pending().filter(c => keyOf(c.id) === key), away = pending().filter(c => keyOf(c.id) !== key);
+  st.stats = { calls: 0, turns: 0, asks: 0 };
+  screen.innerHTML = STATUS + `
+    <div class="head"><div><h1>正在找</h1><p>每一步都在你的电脑上本地完成</p></div></div>
+    <div class="fixed-photo" id="holder">${shelfHtml(key, glareFirst)}</div>
+    <div class="body"><ol class="trace" id="trace"></ol></div>`;
+  const body = screen.querySelector(".body"), trace = screen.querySelector("#trace");
+  let photo = screen.querySelector("#photo"), tile;
+  const mountTile = () => { tile = document.createElement("div"); tile.className = "tile"; tile.hidden = true; photo.appendChild(tile); };
+  mountTile();
+  const box = (x, y, w, h, bad) => { tile.hidden = false; tile.classList.toggle("bad", !!bad); Object.assign(tile.style, { left: x + "px", top: y + "px", width: w + "px", height: h + "px" }); };
+  const line = (cls, k, html) => { const li = document.createElement("li"); li.className = cls; li.innerHTML = `<span class="k">${k}</span><div>${html}</div>`; trace.appendChild(li); body.scrollTop = body.scrollHeight; return li; };
+  const think = async t => { line("think", "想", t); await wait(900); };
+  const act = async (name, ms = 900) => { st.stats.calls++; const li = line("act", "做", `<span><i></i>${name}</span>`); await wait(ms); li.classList.add("fin"); return li; };
+  const see = async t => { line("see", "看到", t); await wait(750); };
+  const turn = async t => { st.stats.turns++; line("turn", "改主意", t); await wait(1300); };
+
+  // 1. which shelf is this?
+  await think("先确认拍的是哪个货架，再决定要不要在这张里找。"); if (!alive()) return;
+  await act("读货架标牌()"); if (!alive()) return;
+  if (glareFirst) {
+    await see("标牌反光，货架号读不出来。"); if (!alive()) return;
+    st.stats.asks++;
+    const li = line("ask", "问你", "读不出货架号，我不猜。请换个角度重拍一张。<button>重拍一张</button>");
+    await new Promise(r => li.querySelector("button").onclick = r); if (!alive()) return;
+    li.querySelector("button").remove();
+    screen.querySelector("#holder").innerHTML = shelfHtml(key); photo = screen.querySelector("#photo"); mountTile();
+    line("me-line think", "你", "已重拍");
+    await act("读货架标牌()"); if (!alive()) return;
+  }
+  await see(`这是 <code>${s.shelf}</code> 号货架，第 <code>${s.level}</code> 层。`); if (!alive()) return;
+
+  // 2. decide what belongs here
+  if (!here.length) {
+    await turn(`要找的 ${away.map(c => `<code>${tail(c.id)}</code>`).join("、")} 都不在这一面，这张不找了。`);
+    if (alive()) go("result"); return;
+  }
+  await think(`${here.map(c => `<code>${tail(c.id)}</code>`).join("、")} 的取件码是 ${key} 开头，就在这一面。` +
+    (away.length ? `${away.map(c => `<code>${tail(c.id)}</code>`).join("、")} 是 ${keyOf(away[0].id)} 开头，不在这里，先记下，稍后换货架。` : ""));
+  if (!alive()) return;
+
+  // 3. find each parcel: scan, narrow, verify (first one shows a failed verification)
+  for (const [n, c] of here.entries()) {
+    const code = tail(c.id), node = photo.querySelector(`[data-code="${code}"]`), r = rectIn(photo, node);
+    const cols = 3, rows = s.rows.length, tw = r.pw / cols, th = r.ph / rows;
+    const col = Math.min(cols - 1, Math.floor((r.x + r.w / 2) / tw)), row = Math.min(rows - 1, Math.floor((r.y + r.h / 2) / th));
+    const hit = row * cols + col;
+    const scanning = act(`分块扫描(${cols * rows} 块)`, 420 * (hit + 1) + 300);
+    for (let i = 0; i <= hit; i++) { box((i % cols) * tw, Math.floor(i / cols) * th, tw, th); await wait(420); if (!alive()) return; }
+    await scanning; if (!alive()) return;
+    await see(`第 ${hit + 1} 块里读到 <code>${code}</code>，后面的块不用再看了。`); if (!alive()) return;
+    await think("这一块里有好几个标签，位置还不够准。"); if (!alive()) return;
+    box(r.x - 24, r.y - 16, r.w + 48, r.h + 32);
+    await act(`放大定位(第 ${hit + 1} 块)`); if (!alive()) return;
+    await see("范围缩到一个标签大小。"); if (!alive()) return;
+    box(r.x - 6, r.y - 5, r.w + 12, r.h + 10, n === 0 && !glareFirst);
+    await act("复核()"); if (!alive()) return;
+    if (n === 0 && !glareFirst) {
+      const wrong = code.slice(0, 3) + ((+code[3] + 2) % 10);
+      await see(`这次读到的是 <code>${wrong}</code>，和刚才的 <code>${code}</code> 不一致。`); if (!alive()) return;
+      await turn("两次读数对不上，不能直接圈。再放大一倍，重读两遍。"); if (!alive()) return;
+      box(r.x - 3, r.y - 3, r.w + 6, r.h + 6);
+      await act("放大重读(×2)", 1200); if (!alive()) return;
+      await see(`<code>${code}</code>、<code>${code}</code>，连续两次一致。`); if (!alive()) return;
+    } else {
+      await see(`再读一遍仍是 <code>${code}</code>，一致。`); if (!alive()) return;
+    }
+    await think(`确认 <code>${code}</code>，可以圈出来了。`); if (!alive()) return;
+  }
+  if (alive()) go("result");
+}
+
+function result() {
+  const key = curKey();
+  const here = pending().filter(c => keyOf(c.id) === key), away = pending().filter(c => keyOf(c.id) !== key);
+  here.forEach(c => c.done = true);
+  const left = pending().length, s = st.stats || { calls: 0, turns: 0, asks: 0 };
+  for (const k in st.total) st.total[k] += s[k];
+  const msg = (here.length ? `找到 ${here.map(c => `<code>${tail(c.id)}</code>`).join("、")} 了，已经在照片上圈出来，取件时再核对一下姓名。` : "这一面没有你要的快递。") +
+    (away.length ? ` ${away.map(c => `<code>${tail(c.id)}</code>`).join("、")} 在 <b>${place(away[0].id)}</b>，到那边拍一张给我。` : "");
+  screen.innerHTML = STATUS + `
+    <div class="head"><div><h1>${here.length ? "找到了" : "不在这一面"}</h1><p>${place(key + "-0")}</p></div></div>
+    <div class="body">${shelfHtml(key)}
+      <div class="ai"><span class="name">找件助手</span><div>${msg}</div>
+        <h3>这一张里它做了什么</h3>
+        <div class="stats"><div><b>${s.calls}</b><span>次调用本地模型</span></div>
+          <div class="${s.turns ? "hot" : ""}"><b>${s.turns}</b><span>次改主意</span></div>
+          <div><b>${s.asks}</b><span>次向你求助</span></div></div>
+        <h3>任务进度 ${st.codes.length - left} / ${st.codes.length}</h3>
+        ${st.codes.map((c, i) => ticketHtml(c, i, c.done ? "" : "go")).join("")}
+      </div>
+      ${left ? "" : `<div class="allset"><b>全部找齐</b><span>${st.codes.length} 件，${st.shot + 1} 张照片，共调用本地模型 ${st.total.calls} 次</span></div>`}
+    </div>
+    <div class="cta">${left
+      ? `<button class="btn-main" id="next">去 ${place(pending()[0].id)} 拍照<small>还差 ${left} 件</small></button>`
+      : '<button class="btn-main" id="again">再来一次</button>'}</div>`;
+  const photo = screen.querySelector("#photo");
+  if (here.length) photo.classList.add("dim");
+  here.forEach(c => {
+    const node = photo.querySelector(`[data-code="${tail(c.id)}"]`); node.classList.add("hit");
+    const r = rectIn(photo, node), pad = 9, w = r.w + pad * 2, h = r.h + pad * 2;
+    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    svg.setAttribute("class", "ring"); svg.setAttribute("width", w); svg.setAttribute("height", h);
+    Object.assign(svg.style, { left: (r.x - pad) + "px", top: (r.y - pad) + "px" });
+    svg.innerHTML = `<ellipse cx="${w / 2}" cy="${h / 2}" rx="${w / 2 - 3}" ry="${h / 2 - 3}" transform="rotate(-6 ${w / 2} ${h / 2})"/>`;
+    photo.appendChild(svg);
+    const flag = document.createElement("div"); flag.className = "flag"; flag.textContent = tail(c.id);
+    Object.assign(flag.style, { left: (r.x + r.w / 2) + "px", top: (r.y - pad - 6) + "px" });
+    photo.appendChild(flag);
+  });
+  const next = screen.querySelector("#next"), again = screen.querySelector("#again");
+  if (next) next.onclick = () => { st.shot++; go("shoot"); };
+  if (again) again.onclick = () => { st.codes.forEach(c => c.done = false); st.shot = 0; st.total = { calls: 0, turns: 0, asks: 0 }; go("home"); };
+}
+
+// #shoot / #work / #result open that screen directly (used for previews)
+const start = location.hash.slice(1);
+go(["shoot", "work", "result"].includes(start) ? start : "home");
+</script>
+</body>
+</html>

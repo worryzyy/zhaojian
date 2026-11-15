@@ -1,0 +1,8 @@
+server/data/
+server/access-key.txt
+*.log
+__pycache__/
+*.pyc
+app/unpackage/
+app/.hbuilderx/
+node_modules/

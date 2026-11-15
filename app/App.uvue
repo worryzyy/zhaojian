@@ -1,0 +1,12 @@
+<script setup lang="uts">
+	onLaunch(() => {
+		console.log('App Launch')
+	})
+</script>
+
+<style>
+	/* shared by every page */
+	.row {
+		flex-direction: row;
+	}
+</style>

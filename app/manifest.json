@@ -1,0 +1,22 @@
+{
+	"name": "找件",
+	"appid": "",
+	"description": "告诉它取件码，拍一张货架，本地模型替你找到并圈出来",
+	"versionName": "0.1.0",
+	"versionCode": "100",
+	"uni-app-x": {},
+	"vueVersion": "3",
+	"app": {
+		"distribute": {
+			"modules": {}
+		}
+	},
+	"app-harmony": {
+		"distribute": {
+			"bundleName": "com.cc.minicpmv"
+		}
+	},
+	"web": {
+		"title": "找件"
+	}
+}

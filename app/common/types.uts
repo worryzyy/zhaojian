@@ -1,0 +1,90 @@
+// Shapes of what the agent service on the laptop returns.
+// Fields the service may leave out are nullable, otherwise the typed JSON parse fails on app platforms.
+
+export type Health = {
+	ok : boolean;
+	model : string;
+	key_required : boolean;
+}
+
+export type Parcel = {
+	code : string;
+	shelf : number;
+	level : number;
+	tail : string;
+	status : string;
+	note : string;
+}
+
+export type PlanItem = {
+	shelf : number;
+	level : number;
+	tails : string[];
+}
+
+export type Task = {
+	id : string;
+	parcels : Parcel[];
+	plan : PlanItem[];
+	photos : string[];
+	done : boolean;
+	left : number;
+}
+
+export type AgentEvent = {
+	i : number;
+	kind : string;
+	text : string;
+	t : number;
+	tile : number[] | null;
+	box : number[] | null;
+}
+
+export type Mark = {
+	tail : string;
+	box : number[];
+	verified : boolean;
+}
+
+export type Summary = {
+	status : string;
+	message : string;
+	calls : number;
+	turns : number;
+	asks : number;
+	found : string[];
+	seconds : number | null;
+	size : number[] | null;
+	marks : Mark[] | null;
+}
+
+export type EventsRes = {
+	events : AgentEvent[];
+	running : boolean;
+	summary : Summary | null;
+	task : Task | null;
+}
+
+export type HistoryItem = {
+	code : string;
+	tail : string;
+	shelf : number;
+	level : number;
+	at : string;
+	photo : string;
+	box : number[] | null;
+}
+
+export type HistoryRes = {
+	items : HistoryItem[];
+}
+
+export type VoiceRes = {
+	text : string;
+	level : number | null;
+}
+
+export type PhotoStart = {
+	photo_id : string;
+	size : number[] | null;
+}

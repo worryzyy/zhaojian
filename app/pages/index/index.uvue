@@ -1,0 +1,1771 @@
+<template>
+	<view class="page" :style="'padding-top:' + topInset + 'px;'">
+		<view class="wrap" :style="'width:' + pageW + 'px;'">
+
+			<!-- header -->
+			<view class="head row">
+				<view v-if="screen == 'shoot' || screen == 'history'" class="back" @click="goHome"><text class="back-t">‹</text></view>
+				<view class="head-main">
+					<text class="h1">{{ title }}</text>
+					<text class="sub">{{ subtitle }}</text>
+				</view>
+				<view v-if="screen == 'home'" class="rec-btn" @click="openHistory"><text class="rec-btn-t">记录</text></view>
+				<view class="pill" :class="online == 2 ? 'pill-off' : ''" @click="toggleSettings">
+					<text class="pill-t" :class="online == 2 ? 'pill-t-off' : ''">{{ onlineText }}</text>
+				</view>
+			</view>
+
+			<!-- ============ home: say what to find ============ -->
+			<scroll-view v-if="screen == 'home'" class="body" :scroll-top="scrollTop">
+				<view v-if="showSettings" class="card">
+					<text class="name">连接设置</text>
+					<text class="hint">电脑上服务的地址</text>
+					<input class="field" v-model="serverInput" placeholder="http://192.168.1.100:18600" />
+					<text class="hint">访问口令</text>
+					<input class="field" v-model="keyInput" placeholder="电脑上设置的口令" />
+					<view class="btn-dark" @click="saveSettings"><text class="btn-dark-t">保存并重新连接</text></view>
+				</view>
+
+				<view class="card">
+					<text class="name">找件助手</text>
+					<text class="p">把取件码告诉我，或者直接把取件短信粘贴进来。然后去货架前拍一张照片，我来找。</text>
+				</view>
+
+				<view v-for="(m, idx) in chat" :key="idx" :class="bubbleClass(m.who)">
+					<image v-if="m.who == 'img'" class="thumb" :src="m.text" mode="aspectFill"></image>
+					<text v-else :class="m.who == 'me' ? 'me-t' : 'sys-t'">{{ m.text }}</text>
+				</view>
+
+				<view v-if="task != null && parcels.length > 0" class="card">
+					<text class="name">找件助手</text>
+					<text class="p">要找 {{ parcels.length }} 件快递：</text>
+					<view v-for="(p, idx) in parcels" :key="p.code" class="ticket row">
+						<view class="label"><text class="label-t">{{ p.tail }}</text></view>
+						<view class="where">
+							<text class="where-b">{{ place(p.shelf, p.level) }}</text>
+							<text class="where-s">{{ p.note.length > 0 ? p.note : p.code }}</text>
+						</view>
+						<view v-if="p.status == 'found'" class="state state-ok">
+							<text class="state-t state-t-ok">已找到</text>
+						</view>
+						<view v-else class="del" @click="removeParcel(p.code)">
+							<image class="del-i" src="/static/close.svg" mode="aspectFit"></image>
+						</view>
+					</view>
+					<text v-if="parcels.length > 0 && pending.length > 0" class="tip">不要的点 × 删掉</text>
+					<text v-if="pending.length > 0" class="p p-gap">走到货架前拍一张，我在照片里找，找到后会再读一遍确认才圈出来。</text>
+				</view>
+
+				<view v-if="task == null && !busy" class="eg" @click="useExample"><text class="eg-t">用一条示例短信试试</text></view>
+				<view v-if="busy" class="typing"><text class="typing-t">{{ busyText }}</text></view>
+			</scroll-view>
+			<view v-if="screen == 'home'" class="cta">
+				<view v-if="pending.length > 0" class="btn-main btn-above" @click="goShoot"><text class="btn-main-t">拍货架，开始找</text></view>
+				<view class="say row">
+					<!-- #ifdef APP -->
+					<view class="icon-btn" @click="toggleVoiceMode">
+						<image class="icon" :src="voiceMode ? '/static/keyboard.svg' : '/static/mic.svg'" mode="aspectFit"></image>
+					</view>
+					<!-- #endif -->
+					<view v-if="voiceMode" class="hold" :class="recording ? 'hold-on' : ''"
+						@touchstart="holdStart" @touchmove="holdMove" @touchend="holdEnd" @touchcancel="holdCancel">
+						<text class="hold-t">{{ recording ? (cancelArmed ? '松开 取消' : '松开 发送') : '按住 说话' }}</text>
+					</view>
+					<textarea v-else class="say-input" v-model="inputText" :auto-height="true" confirm-type="send" @confirm="send"
+						:placeholder="task == null ? '取件码、短信，或点 + 贴截图' : '还要取别的？继续说'" />
+					<view v-if="inputText.length > 0 && !voiceMode" class="send" @click="send"><text class="send-t">发送</text></view>
+					<view v-else class="icon-btn" @click="attach">
+						<image class="icon" src="/static/plus.svg" mode="aspectFit"></image>
+					</view>
+				</view>
+			</view>
+
+			<!-- ============ shoot ============ -->
+			<scroll-view v-if="screen == 'shoot'" class="body">
+				<view class="shoot-hint">
+					<text class="hint">对着你要找的那一排货架拍一张</text>
+					<text class="shoot-b">找 {{ shootTails }}</text>
+					<text v-if="shootPlace.length > 0" class="hint">{{ shootPlace }}</text>
+				</view>
+				<view class="card">
+					<text class="name">怎么拍</text>
+					<text class="p">尽量正对货架，别太远，标签上的数字要看得清。拍进货架的号牌更好，我会先找号码对得上的。照片只发到你自己的电脑。</text>
+				</view>
+			</scroll-view>
+			<view v-if="screen == 'shoot'" class="cta">
+				<view class="btn-main" @click="pickCamera"><text class="btn-main-t">拍照</text></view>
+				<view class="btn-2" @click="pickAlbum"><text class="btn-2-t">从相册选一张</text></view>
+			</view>
+
+			<!-- ============ work: the live agent run ============ -->
+			<view v-if="screen == 'work'" class="photo" :style="'width:' + contentW + 'px;height:' + photoH + 'px;'">
+				<image class="photo-img" :src="photoPath" mode="scaleToFill" :style="'width:' + contentW + 'px;height:' + photoH + 'px;'"></image>
+				<view class="tile" :style="tileStyle">
+					<view class="scan-line" :style="scanLineStyle"></view>
+				</view>
+			</view>
+			<scroll-view v-if="screen == 'work'" class="body" :scroll-top="scrollTop">
+				<view v-for="(e, idx) in lines" :key="idx" class="line row" :class="lineClass(e.kind)">
+					<view class="k" :class="kClass(e.kind)"><text class="k-t" :class="kTextClass(e.kind)">{{ kindLabel(e.kind) }}</text></view>
+					<text class="line-t" :class="lineTextClass(e.kind)">{{ e.text }}</text>
+				</view>
+				<view v-if="workFailed" class="btn-2" @click="goShoot"><text class="btn-2-t">返回重拍</text></view>
+			</scroll-view>
+
+			<!-- ============ history: the pickup record ============ -->
+			<scroll-view v-if="screen == 'history'" class="body">
+				<text v-if="historyLoading" class="hint">正在读取…</text>
+				<view v-if="!historyLoading && historyItems.length == 0" class="card">
+					<text class="p">还没有记录。找到的快递会自动记在这里，方便以后核对。</text>
+				</view>
+				<view v-for="(h, idx) in historyItems" :key="idx" class="hist row" @click="viewHistoryPhoto(h.photo)">
+					<view class="label"><text class="label-t">{{ h.tail }}</text></view>
+					<view class="where">
+						<text class="where-b">{{ h.at }}</text>
+						<text class="where-s">{{ h.code }}{{ h.shelf > 0 ? ' · ' + place(h.shelf, h.level) : '' }}</text>
+					</view>
+					<text class="hist-go">看照片 ›</text>
+				</view>
+			</scroll-view>
+
+			<!-- ============ result ============ -->
+			<scroll-view v-if="screen == 'result'" class="body">
+				<view class="photo" :style="'width:' + contentW + 'px;height:' + photoH + 'px;'">
+					<image class="photo-img" :src="resultImage" mode="scaleToFill" :style="'width:' + contentW + 'px;height:' + photoH + 'px;'"></image>
+				</view>
+				<view v-for="(z, idx) in zooms" :key="idx" class="zoom" :style="'width:' + contentW + 'px;'">
+					<image class="zoom-img" :src="resultImage" mode="scaleToFill" :style="z.imgStyle"></image>
+					<view class="zoom-cap"><text class="zoom-cap-t">{{ z.verified ? z.tail : z.tail + ' · 请自己核对' }}</text></view>
+				</view>
+				<view class="card">
+					<text class="name">找件助手</text>
+					<text class="p">{{ resultMessage }}</text>
+					<text class="h3">这一张里它做了什么</text>
+					<view class="stats row">
+						<view class="stat"><text class="stat-b">{{ statCalls }}</text><text class="stat-s">次调用模型</text></view>
+						<view class="stat"><text class="stat-b" :class="statTurns > 0 ? 'stat-hot' : ''">{{ statTurns }}</text><text class="stat-s">次改主意</text></view>
+						<view class="stat"><text class="stat-b">{{ statAsks }}</text><text class="stat-s">次问你</text></view>
+						<view class="stat stat-last"><text class="stat-b">{{ statSeconds }}</text><text class="stat-s">秒</text></view>
+					</view>
+					<text class="h3">任务进度 {{ parcels.length - pending.length }} / {{ parcels.length }}</text>
+					<view v-for="(p, idx) in parcels" :key="idx" class="ticket row">
+						<view class="label"><text class="label-t">{{ p.tail }}</text></view>
+						<view class="where">
+							<text class="where-b">{{ place(p.shelf, p.level) }}</text>
+							<text class="where-s">{{ p.note.length > 0 ? p.note : p.code }}</text>
+						</view>
+						<view class="state" :class="p.status == 'found' ? 'state-ok' : ''">
+							<text class="state-t" :class="p.status == 'found' ? 'state-t-ok' : ''">{{ p.status == 'found' ? '已找到' : '待找' }}</text>
+						</view>
+					</view>
+				</view>
+				<view v-if="allDone" class="allset"><text class="allset-b">全部找齐</text></view>
+			</scroll-view>
+			<view v-if="screen == 'result'" class="cta">
+				<view v-if="allDone" class="btn-main" @click="newTask"><text class="btn-main-t">再找别的快递</text></view>
+				<view v-if="!allDone" class="btn-main" @click="goShoot"><text class="btn-main-t">{{ nextLabel }}</text></view>
+				<view v-if="!allDone && resultStatus == 'other_shelf'" class="btn-2" @click="forceHere"><text class="btn-2-t">就是这一面，仍然在这张里找</text></view>
+			</view>
+
+		</view>
+
+		<view v-if="recording" class="rec-mask">
+			<view class="rec-card" :class="cancelArmed ? 'rec-card-cancel' : ''">
+				<image class="rec-mic" :src="cancelArmed ? '/static/close-white.svg' : '/static/mic-white.svg'" mode="aspectFit"></image>
+				<text class="rec-time">{{ recClock }}</text>
+				<view class="bars row">
+					<view v-for="n in 9" :key="n" class="bar" :style="'height:' + barHeight(n) + 'px;'"></view>
+				</view>
+			</view>
+			<view class="rec-cancel" :class="cancelArmed ? 'rec-cancel-on' : ''">
+				<image class="rec-cancel-i" :src="cancelArmed ? '/static/close-white.svg' : '/static/close-dark.svg'" mode="aspectFit"></image>
+			</view>
+			<text class="rec-hint" :class="cancelArmed ? 'rec-hint-cancel' : ''">{{ cancelArmed ? '松开手指，取消发送' : '松开 发送，上滑 取消' }}</text>
+		</view>
+	</view>
+</template>
+
+<script setup lang="uts">
+	import { Health, Task, Parcel, PlanItem, AgentEvent, Mark, Summary, EventsRes, PhotoStart, VoiceRes, HistoryItem, HistoryRes } from '@/common/types.uts'
+	import { getServer, setServer, getKey, setKey, fetchHealth, createTask, addCodes, uploadPhoto, forcePhoto, fetchEvents, annotatedUrl, uploadCodeImage, uploadVoice, removeCode, TASK_GONE, fetchHistory } from '@/common/api.uts'
+
+	type ChatLine = {
+		who : string;
+		text : string;
+	}
+
+	type ZoomItem = {
+		tail : string;
+		verified : boolean;
+		imgStyle : string;
+	}
+
+	const EXAMPLE = '【菜鸟驿站】您的包裹已到站，取件码 8-2-5726、8-2-9442，请凭码领取。'
+	const ZOOM_H = 170
+
+	// ---- layout numbers: uvue has no percentage-of-image overlays, so sizes are computed in px
+	const win = uni.getWindowInfo()
+	const topInset = win.statusBarHeight
+	// On Android the window has not been measured yet when the page script first runs (windowWidth is 0),
+	// so fall back to the screen width.
+	const firstW = win.windowWidth > 0 ? win.windowWidth : win.screenWidth
+	const pageW = Math.min(firstW, 600)
+	const contentW = pageW - 32
+
+	// ---- state
+	const screen = ref('home')              // home | shoot | work | result
+	const online = ref(0)                   // 0 unknown, 1 connected, 2 not connected
+	const showSettings = ref(false)
+	const serverInput = ref(getServer())
+	const keyInput = ref(getKey())
+	const task = ref<Task | null>(null)
+	const chat = ref<ChatLine[]>([])
+	const inputText = ref('')
+	const busy = ref(false)
+	const busyText = ref('正在读取件码…')
+	const recording = ref(false)
+	const voiceMode = ref(false)
+	const historyItems = ref<HistoryItem[]>([])
+	const historyLoading = ref(false)
+	const scanDown = ref(false)
+	let scanTimer = 0
+	const stopScan = () => {
+		if (scanTimer != 0) {
+			clearInterval(scanTimer)
+			scanTimer = 0
+		}
+	}
+	const cancelArmed = ref(false)
+	const recTicks = ref(0)
+	let recorder : RecorderManager | null = null
+	let recStartY = 0
+	let recStartedAt = 0
+	let recDiscard = false
+	let recTimer = 0
+	const scrollTop = ref(0)
+	const photoPath = ref('')
+	const photoH = ref(Math.round(contentW * 0.75))
+	const photoId = ref('')
+	const lines = ref<AgentEvent[]>([])
+	const tile = ref<number[] | null>(null)
+	const summary = ref<Summary | null>(null)
+	const workFailed = ref(false)
+	let runToken = 0
+
+	// ---- derived
+	const parcels = computed(() : Parcel[] => {
+		const t = task.value
+		if (t == null) {
+			return [] as Parcel[]
+		}
+		return t.parcels
+	})
+	const plan = computed(() : PlanItem[] => {
+		const t = task.value
+		if (t == null) {
+			return [] as PlanItem[]
+		}
+		return t.plan
+	})
+	const pending = computed(() : Parcel[] => {
+		return parcels.value.filter((p : Parcel) : boolean => p.status != 'found')
+	})
+	const allDone = computed(() : boolean => {
+		return parcels.value.length > 0 && pending.value.length == 0
+	})
+	const resultStatus = computed(() : string => {
+		const s = summary.value
+		if (s == null) {
+			return ''
+		}
+		return s.status
+	})
+	const resultMessage = computed(() : string => {
+		const s = summary.value
+		if (s == null) {
+			return ''
+		}
+		return s.message
+	})
+	const statCalls = computed(() : number => {
+		const s = summary.value
+		if (s == null) {
+			return 0
+		}
+		return s.calls
+	})
+	const statTurns = computed(() : number => {
+		const s = summary.value
+		if (s == null) {
+			return 0
+		}
+		return s.turns
+	})
+	const statAsks = computed(() : number => {
+		const s = summary.value
+		if (s == null) {
+			return 0
+		}
+		return s.asks
+	})
+	const statSeconds = computed(() : string => {
+		const s = summary.value
+		if (s == null) {
+			return '-'
+		}
+		const sec = s.seconds
+		if (sec == null) {
+			return '-'
+		}
+		return sec.toString()
+	})
+	const place = (shelf : number, level : number) : string => {
+		if (shelf <= 0) {
+			return '货架你自己找'
+		}
+		if (level <= 0) {
+			return `${shelf} 号货架`
+		}
+		return `${shelf} 号货架第 ${level} 层`
+	}
+	const title = computed(() : string => {
+		if (screen.value == 'shoot') {
+			return '拍货架'
+		}
+		if (screen.value == 'history') {
+			return '取件记录'
+		}
+		if (screen.value == 'work') {
+			return '正在找'
+		}
+		if (screen.value == 'result') {
+			const st = resultStatus.value
+			if (st == 'all_found') {
+				return '全部找齐'
+			}
+			if (st == 'retake') {
+				return '需要重拍'
+			}
+			if (st == 'other_shelf') {
+				return '不在这一面'
+			}
+			return statCalls.value > 0 && resultMessage.value.startsWith('找到') ? '找到了' : '这张里没有'
+		}
+		return '找件'
+	})
+	const subtitle = computed(() : string => {
+		if (screen.value == 'shoot') {
+			return `还差 ${pending.value.length} 件`
+		}
+		if (screen.value == 'history') {
+			return `找到过 ${historyItems.value.length} 件，点一条看当时的照片`
+		}
+		if (screen.value == 'work') {
+			return '每一步都在你的电脑上本地完成'
+		}
+		if (screen.value == 'result') {
+			return `调用本地模型 ${statCalls.value} 次，用时 ${statSeconds.value} 秒`
+		}
+		return '告诉我取件码，剩下的交给我'
+	})
+	const onlineText = computed(() : string => {
+		if (online.value == 1) {
+			return '已连接'
+		}
+		if (online.value == 2) {
+			return '未连接 · 设置'
+		}
+		return '连接中'
+	})
+	const shootPlace = computed(() : string => {
+		const list = pending.value
+		if (list.length == 0) {
+			return '货架'
+		}
+		const known = list.filter((p : Parcel) : boolean => p.shelf > 0)
+		if (known.length == 0) {
+			return ''
+		}
+		return '取件码上写的：' + known.map((p : Parcel) : string => p.tail + ' 在 ' + place(p.shelf, p.level)).join('，')
+	})
+	const shootTails = computed(() : string => {
+		const list = pending.value
+		if (list.length == 0) {
+			return ''
+		}
+		return list.map((p : Parcel) : string => p.tail).join('、')
+	})
+	const nextLabel = computed(() : string => {
+		const st = resultStatus.value
+		if (st == 'retake') {
+			return '重拍一张'
+		}
+		if (st == 'other_shelf') {
+			return '去 ' + shootPlace.value + ' 拍照'
+		}
+		return `拍下一张（还差 ${pending.value.length} 件）`
+	})
+	const resultImage = computed(() : string => {
+		if (resultStatus.value == 'retake' || photoId.value.length == 0) {
+			return photoPath.value
+		}
+		return annotatedUrl(photoId.value)
+	})
+	/** The frame's box in px. Before the agent points anywhere it frames the whole photo; it never touches
+	 *  the photo's rounded edge, where the border would be clipped. */
+	const tileBox = computed(() : number[] => {
+		const b = tile.value
+		const r = (b == null || b.length < 4) ? [0, 0, 1, 1] : b
+		const W = contentW
+		const H = photoH.value
+		const l = Math.max(2, Math.round(r[0] * W))
+		const t = Math.max(2, Math.round(r[1] * H))
+		const rr = Math.min(W - 2, Math.round(r[2] * W))
+		const bb = Math.min(H - 2, Math.round(r[3] * H))
+		return [l, t, Math.max(12, rr - l), Math.max(12, bb - t)]
+	})
+	const tileStyle = computed(() : string => {
+		const x = tileBox.value
+		// Moved with transform rather than left/top: on Android a transition on left/top
+		// left the frame stuck at its first position.
+		return `width:${x[2]}px;height:${x[3]}px;transform:translateX(${x[0]}px) translateY(${x[1]}px);`
+	})
+	const tileH = computed(() : number => {
+		return tileBox.value[3]
+	})
+	/** A bright line that sweeps up and down inside the frame while the agent reads it. */
+	const scanLineStyle = computed(() : string => {
+		const y = scanDown.value ? Math.max(0, tileH.value - 12) : 0
+		return `transform:translateY(${y}px);`
+	})
+	/** A close-up of each circled parcel: the annotated photo enlarged and shifted inside a clipped box. */
+	const zooms = computed(() : ZoomItem[] => {
+		const out : ZoomItem[] = []
+		const s = summary.value
+		if (s == null) {
+			return out
+		}
+		const marks = s.marks
+		if (marks == null) {
+			return out
+		}
+		marks.forEach((m : Mark) => {
+			if (m.box.length < 4) {
+				return
+			}
+			let rw = Math.max((m.box[2] - m.box[0]) * 4, 0.3)
+			if (rw > 1) {
+				rw = 1
+			}
+			const imgW = contentW / rw
+			const imgH = imgW * photoH.value / contentW
+			let left = (m.box[0] + m.box[2]) / 2 * imgW - contentW / 2
+			let top = (m.box[1] + m.box[3]) / 2 * imgH - ZOOM_H / 2
+			left = Math.max(0, Math.min(left, imgW - contentW))
+			top = Math.max(0, Math.min(top, Math.max(0, imgH - ZOOM_H)))
+			const item : ZoomItem = {
+				tail: m.tail,
+				verified: m.verified,
+				imgStyle: `width:${Math.round(imgW)}px;height:${Math.round(imgH)}px;left:${-Math.round(left)}px;top:${-Math.round(top)}px;`
+			}
+			out.push(item)
+		})
+		return out
+	})
+
+	const bubbleClass = (who : string) : string => {
+		if (who == 'me') {
+			return 'me'
+		}
+		if (who == 'img') {
+			return 'img-bubble'
+		}
+		return 'sys'
+	}
+
+	// ---- trace line styling
+	const kindLabel = (kind : string) : string => {
+		if (kind == 'think') {
+			return '想'
+		}
+		if (kind == 'act') {
+			return '做'
+		}
+		if (kind == 'see') {
+			return '看到'
+		}
+		if (kind == 'turn') {
+			return '改主意'
+		}
+		if (kind == 'ask') {
+			return '问你'
+		}
+		return '出错'
+	}
+	const lineClass = (kind : string) : string => {
+		if (kind == 'turn') {
+			return 'line-turn'
+		}
+		if (kind == 'ask' || kind == 'error') {
+			return 'line-ask'
+		}
+		return ''
+	}
+	const kClass = (kind : string) : string => {
+		if (kind == 'act') {
+			return 'k-act'
+		}
+		if (kind == 'see') {
+			return 'k-see'
+		}
+		if (kind == 'turn') {
+			return 'k-turn'
+		}
+		if (kind == 'ask' || kind == 'error') {
+			return 'k-ask'
+		}
+		return ''
+	}
+	const kTextClass = (kind : string) : string => {
+		if (kind == 'see') {
+			return 'k-t-see'
+		}
+		if (kind == 'think') {
+			return 'k-t-think'
+		}
+		return 'k-t-light'
+	}
+	const lineTextClass = (kind : string) : string => {
+		if (kind == 'think') {
+			return 'line-t-think'
+		}
+		if (kind == 'act') {
+			return 'line-t-act'
+		}
+		if (kind == 'turn') {
+			return 'line-t-turn'
+		}
+		if (kind == 'ask' || kind == 'error') {
+			return 'line-t-ask'
+		}
+		return ''
+	}
+
+	// ---- helpers
+	const errText = (e : any | null) : string => {
+		if (e instanceof Error) {
+			return (e as Error).message
+		}
+		return '请求失败'
+	}
+	const scrollDown = () => {
+		scrollTop.value = scrollTop.value + 100000
+	}
+	const say = (who : string, text : string) => {
+		const line : ChatLine = { who: who, text: text }
+		chat.value.push(line)
+	}
+	const pushLine = (kind : string, text : string) => {
+		const line : AgentEvent = { i: -1, kind: kind, text: text, t: 0, tile: null, box: null }
+		lines.value.push(line)
+		scrollDown()
+	}
+	const checkHealth = () => {
+		online.value = 0
+		fetchHealth().then((h : Health) => {
+			online.value = 1
+			if (h.key_required && getKey().length == 0) {
+				// connected, but nothing will work until the key is filled in
+				showSettings.value = true
+			}
+		}).catch((_e : any | null) => {
+			online.value = 2
+		})
+	}
+
+	// ---- the live run: ask the service what happened since the last event, until it stops
+	function poll(pid : string, after : number, token : number) {
+		if (token != runToken) {
+			return
+		}
+		fetchEvents(pid, after).then((r : EventsRes) => {
+			if (token != runToken) {
+				return
+			}
+			let last = after
+			r.events.forEach((e : AgentEvent) => {
+				last = e.i
+				const box = e.box
+				const tl = e.tile
+				if (e.kind == 'progress') {
+					if (tl != null) {
+						tile.value = tl
+					}
+					return
+				}
+				if (e.kind == 'done') {
+					return
+				}
+				if (box != null) {
+					tile.value = box
+				} else if (tl != null) {
+					tile.value = tl
+				}
+				lines.value.push(e)
+			})
+			scrollDown()
+			if (!r.running) {
+				const nt = r.task
+				if (nt != null) {
+					task.value = nt
+				}
+				const s = r.summary
+				summary.value = s
+				if (s == null) {
+					workFailed.value = true
+					pushLine('error', '这次没有完成，请再试一次。')
+					return
+				}
+				const size = s.size
+				if (size != null && size.length >= 2 && size[0] > 0) {
+					photoH.value = Math.round(contentW * size[1] / size[0])
+				}
+				setTimeout(() => {
+					if (token == runToken) {
+						stopScan()
+						screen.value = 'result'
+					}
+				}, 700)
+				return
+			}
+			setTimeout(() => {
+				poll(pid, last, token)
+			}, 350)
+		}).catch((e : any | null) => {
+			if (token != runToken) {
+				return
+			}
+			workFailed.value = true
+			pushLine('error', errText(e))
+		})
+	}
+
+	const beginRun = () => {
+		lines.value = [] as AgentEvent[]
+		tile.value = null
+		summary.value = null
+		workFailed.value = false
+		screen.value = 'work'
+		stopScan()
+		scanTimer = setInterval(() => {
+			scanDown.value = !scanDown.value
+		}, 700)
+	}
+	const follow = (r : PhotoStart) => {
+		photoId.value = r.photo_id
+		const size = r.size
+		if (size != null && size.length >= 2 && size[0] > 0) {
+			photoH.value = Math.round(contentW * size[1] / size[0])
+		}
+		runToken = runToken + 1
+		poll(r.photo_id, -1, runToken)
+	}
+	const startWork = (path : string) => {
+		const t = task.value
+		if (t == null) {
+			return
+		}
+		photoPath.value = path
+		beginRun()
+		uploadPhoto(t.id, path).then((r : PhotoStart) => {
+			follow(r)
+		}).catch((e : any | null) => {
+			workFailed.value = true
+			pushLine('error', '照片没传上去：' + errText(e))
+		})
+	}
+	const pick = (source : string) => {
+		uni.chooseImage({
+			count: 1,
+			sizeType: ['compressed'],
+			sourceType: [source],
+			success: (res) => {
+				startWork(res.tempFilePaths[0])
+			},
+			fail: (_e) => { }
+		})
+	}
+
+	// ---- handlers
+	const applyTask = (nt : Task, emptyText : string) => {
+		busy.value = false
+		task.value = nt
+		if (nt.parcels.length == 0) {
+			say('sys', emptyText)
+			task.value = null
+		}
+		scrollDown()
+	}
+	const failTask = (e : any | null) => {
+		busy.value = false
+		if (errText(e) == TASK_GONE) {
+			task.value = null
+		}
+		say('sys', errText(e))
+		scrollDown()
+	}
+	const submit = (text : string) => {
+		uni.hideKeyboard()
+		say('me', text)
+		inputText.value = ''
+		busyText.value = '正在读取件码…'
+		busy.value = true
+		scrollDown()
+		const t = task.value
+		const job = t == null ? createTask(text) : addCodes(t.id, text)
+		job.then((nt : Task) => {
+			applyTask(nt, '这段话里没有找到取件码。取件码的样子是 8-2-5726，前面是货架号和层号。')
+		}).catch((e : any | null) => {
+			failTask(e)
+		})
+	}
+
+	// ---- attach a picture of the pickup message
+	const sendCodeImage = (path : string) => {
+		say('img', path)
+		busyText.value = '正在看这张图里的取件码…'
+		busy.value = true
+		scrollDown()
+		const t = task.value
+		uploadCodeImage(t == null ? '' : t.id, path).then((nt : Task) => {
+			applyTask(nt, '这张图里没有读到取件码。请确认图里有类似 8-2-5726 的取件码，或者直接打字告诉我。')
+		}).catch((e : any | null) => {
+			failTask(e)
+		})
+	}
+	const pickCodeImage = (source : string) => {
+		uni.chooseImage({
+			count: 1,
+			sizeType: ['compressed'],
+			sourceType: [source],
+			success: (res) => {
+				sendCodeImage(res.tempFilePaths[0])
+			},
+			fail: (_e) => { }
+		})
+	}
+	const attach = () => {
+		if (busy.value) {
+			return
+		}
+		uni.showActionSheet({
+			itemList: ['从相册选取件短信截图', '拍一张取件码'],
+			success: (e) => {
+				pickCodeImage(e.tapIndex == 0 ? 'album' : 'camera')
+			},
+			fail: (_e) => { }
+		})
+	}
+
+	// ---- speak the request
+	const sendVoice = (path : string) => {
+		busyText.value = '正在听写…'
+		busy.value = true
+		scrollDown()
+		uploadVoice(path).then((r : VoiceRes) => {
+			busy.value = false
+			const heard = r.text.trim()
+			const level = r.level
+			if (heard.length == 0 && level != null && level < 0.004) {
+				say('sys', '没录到声音。请按住按钮后靠近手机说话，说完再松开。')
+				scrollDown()
+			} else if (heard.length == 0) {
+				say('sys', '没听清，请再说一遍，或者直接打字。')
+				scrollDown()
+			} else {
+				submit(heard)
+			}
+		}).catch((e : any | null) => {
+			failTask(e)
+		})
+	}
+	const recClock = computed(() : string => {
+		const sec = Math.floor(recTicks.value / 4)
+		return '0:' + (sec < 10 ? '0' : '') + sec
+	})
+	/** A simple moving level meter; it shows the recorder is live, not the real loudness. */
+	const barHeight = (n : number) : number => {
+		const phase = (recTicks.value + n * 3) % 8
+		return 8 + (phase < 4 ? phase : 8 - phase) * 6
+	}
+	const stopRecTimer = () => {
+		if (recTimer != 0) {
+			clearInterval(recTimer)
+			recTimer = 0
+		}
+	}
+	const getRecorder = () : RecorderManager => {
+		const existing = recorder
+		if (existing != null) {
+			return existing
+		}
+		const r = uni.getRecorderManager()
+		r.onStop((res) => {
+			stopRecTimer()
+			recording.value = false
+			if (recDiscard) {
+				recDiscard = false
+				return
+			}
+			if (Date.now() - recStartedAt < 700) {
+				uni.showToast({ title: '说话时间太短', icon: 'none' })
+				return
+			}
+			sendVoice(res.tempFilePath)
+		})
+		r.onError((_res) => {
+			stopRecTimer()
+			recording.value = false
+			say('sys', '录音没成功，请检查是否允许使用麦克风。')
+			scrollDown()
+		})
+		recorder = r
+		return r
+	}
+	const toggleVoiceMode = () => {
+		voiceMode.value = !voiceMode.value
+		if (voiceMode.value) {
+			uni.hideKeyboard()
+		}
+	}
+	const holdStart = (e : TouchEvent) => {
+		if (busy.value || recording.value) {
+			return
+		}
+		recStartY = e.touches[0].clientY
+		cancelArmed.value = false
+		recDiscard = false
+		recTicks.value = 0
+		recStartedAt = Date.now()
+		recording.value = true
+		recTimer = setInterval(() => {
+			recTicks.value = recTicks.value + 1
+		}, 250)
+		getRecorder().start({ format: 'aac', sampleRate: 16000, numberOfChannels: 1, duration: 60000 })
+	}
+	const holdMove = (e : TouchEvent) => {
+		if (!recording.value || e.touches.length == 0) {
+			return
+		}
+		cancelArmed.value = recStartY - e.touches[0].clientY > 70
+	}
+	const holdEnd = (_e : TouchEvent) => {
+		if (!recording.value) {
+			return
+		}
+		recDiscard = cancelArmed.value
+		cancelArmed.value = false
+		getRecorder().stop()
+	}
+	const holdCancel = (_e : TouchEvent) => {
+		if (!recording.value) {
+			return
+		}
+		recDiscard = true
+		cancelArmed.value = false
+		getRecorder().stop()
+	}
+
+	// ---- cross a parcel off the list
+	const removeParcel = (code : string) => {
+		const t = task.value
+		if (t == null) {
+			return
+		}
+		removeCode(t.id, code).then((nt : Task) => {
+			task.value = nt.parcels.length == 0 ? null : nt
+		}).catch((e : any | null) => {
+			say('sys', errText(e))
+			if (errText(e) == TASK_GONE) {
+				task.value = null
+			}
+			scrollDown()
+		})
+	}
+	const send = () => {
+		const text = inputText.value.trim()
+		if (text.length == 0 || busy.value) {
+			return
+		}
+		submit(text)
+	}
+	const useExample = () => {
+		if (!busy.value) {
+			submit(EXAMPLE)
+		}
+	}
+	const goHome = () => {
+		stopScan()
+		runToken = runToken + 1
+		screen.value = 'home'
+	}
+	const goShoot = () => {
+		stopScan()
+		runToken = runToken + 1
+		screen.value = 'shoot'
+	}
+	const pickCamera = () => {
+		pick('camera')
+	}
+	const pickAlbum = () => {
+		pick('album')
+	}
+	const forceHere = () => {
+		const pid = photoId.value
+		if (pid.length == 0) {
+			return
+		}
+		beginRun()
+		forcePhoto(pid).then((r : PhotoStart) => {
+			follow(r)
+		}).catch((e : any | null) => {
+			workFailed.value = true
+			pushLine('error', errText(e))
+		})
+	}
+	const newTask = () => {
+		runToken = runToken + 1
+		task.value = null
+		chat.value = [] as ChatLine[]
+		summary.value = null
+		screen.value = 'home'
+	}
+	const openHistory = () => {
+		screen.value = 'history'
+		historyLoading.value = true
+		fetchHistory().then((r : HistoryRes) => {
+			historyLoading.value = false
+			historyItems.value = r.items
+		}).catch((e : any | null) => {
+			historyLoading.value = false
+			uni.showToast({ title: errText(e), icon: 'none' })
+		})
+	}
+	const viewHistoryPhoto = (pid : string) => {
+		uni.previewImage({ urls: [annotatedUrl(pid)] })
+	}
+	const toggleSettings = () => {
+		showSettings.value = !showSettings.value
+		screen.value = 'home'
+	}
+	const saveSettings = () => {
+		setServer(serverInput.value)
+		setKey(keyInput.value)
+		serverInput.value = getServer()
+		showSettings.value = false
+		checkHealth()
+	}
+
+	// Launch parameters ?server=...&key=... are saved once, so a tester does not have to type them on the phone.
+	onLoad((options : OnLoadOptions) => {
+		const k = options['key']
+		if (k != null && k.length > 0) {
+			setKey(k)
+			keyInput.value = getKey()
+		}
+		const sv = options['server']
+		if (sv != null && sv.length > 0) {
+			const decoded = decodeURIComponent(sv)
+			if (decoded != null) {
+				setServer(decoded)
+				serverInput.value = getServer()
+			}
+		}
+	})
+
+	onReady(() => {
+		checkHealth()
+	})
+</script>
+
+<style>
+	.page {
+		flex: 1;
+		background-color: #f4f6fa;
+		align-items: center;
+	}
+
+	.wrap {
+		flex: 1;
+	}
+
+	.row {
+		flex-direction: row;
+	}
+
+	/* header */
+	.head {
+		padding: 12px 16px 10px 16px;
+		align-items: center;
+	}
+
+	.head-main {
+		flex: 1;
+	}
+
+	.h1 {
+		font-size: 26px;
+		font-weight: bold;
+		color: #111a26;
+		line-height: 32px;
+	}
+
+	.sub {
+		font-size: 12px;
+		color: #6a7686;
+		margin-top: 2px;
+	}
+
+	.back {
+		width: 38px;
+		height: 38px;
+		border-radius: 19px;
+		background-color: #ffffff;
+		align-items: center;
+		justify-content: center;
+		margin-right: 10px;
+	}
+
+	.back-t {
+		font-size: 22px;
+		color: #111a26;
+		line-height: 26px;
+	}
+
+	.rec-btn {
+		padding: 5px 10px;
+		border-radius: 14px;
+		background-color: #ffffff;
+		margin-right: 8px;
+	}
+
+	.rec-btn-t {
+		font-size: 12px;
+		font-weight: bold;
+		color: #111a26;
+	}
+
+	.btn-above {
+		margin-top: 0;
+		margin-bottom: 10px;
+	}
+
+	.p-gap {
+		margin-top: 10px;
+		font-size: 14px;
+		color: #6a7686;
+	}
+
+	.hist {
+		align-items: center;
+		background-color: #ffffff;
+		border-radius: 14px;
+		padding: 10px 12px;
+		margin-bottom: 10px;
+	}
+
+	.hist-go {
+		font-size: 13px;
+		color: #1b5fd9;
+	}
+
+	.pill {
+		padding: 5px 10px;
+		border-radius: 14px;
+		background-color: #e3f6ee;
+	}
+
+	.pill-off {
+		background-color: #ffe9e9;
+	}
+
+	.pill-t {
+		font-size: 12px;
+		color: #12855a;
+	}
+
+	.pill-t-off {
+		color: #ef2b2d;
+	}
+
+	/* scrolling body and bottom bar */
+	.body {
+		flex: 1;
+		padding: 4px 16px 16px 16px;
+	}
+
+	.cta {
+		padding: 10px 16px 18px 16px;
+		background-color: #f4f6fa;
+	}
+
+	.btn-main {
+		height: 54px;
+		border-radius: 16px;
+		background-color: #1b5fd9;
+		align-items: center;
+		justify-content: center;
+		margin-top: 8px;
+	}
+
+	.btn-main-t {
+		font-size: 17px;
+		font-weight: bold;
+		color: #ffffff;
+	}
+
+	.btn-2 {
+		height: 46px;
+		border-radius: 14px;
+		background-color: #ffffff;
+		align-items: center;
+		justify-content: center;
+		margin-top: 8px;
+	}
+
+	.btn-2-t {
+		font-size: 15px;
+		font-weight: bold;
+		color: #111a26;
+	}
+
+	.btn-dark {
+		height: 42px;
+		border-radius: 12px;
+		background-color: #111a26;
+		align-items: center;
+		justify-content: center;
+		margin-top: 12px;
+	}
+
+	.btn-dark-t {
+		font-size: 14px;
+		font-weight: bold;
+		color: #ffffff;
+	}
+
+	/* conversation */
+	.card {
+		background-color: #ffffff;
+		border-radius: 18px;
+		border-top-left-radius: 4px;
+		padding: 12px 14px 14px 14px;
+		margin-bottom: 12px;
+	}
+
+	.name {
+		font-size: 12px;
+		font-weight: bold;
+		color: #1b5fd9;
+		margin-bottom: 6px;
+	}
+
+	.p {
+		font-size: 15px;
+		color: #111a26;
+		line-height: 23px;
+	}
+
+	.h3 {
+		font-size: 12px;
+		font-weight: bold;
+		color: #6a7686;
+		margin-top: 12px;
+		margin-bottom: 6px;
+	}
+
+	.hint {
+		font-size: 13px;
+		color: #6a7686;
+		margin-top: 4px;
+	}
+
+	.field {
+		height: 40px;
+		border-radius: 10px;
+		background-color: #f4f6fa;
+		padding: 0 10px;
+		font-size: 14px;
+		color: #111a26;
+		margin-top: 6px;
+	}
+
+	.me {
+		align-self: flex-end;
+		max-width: 300px;
+		background-color: #1b5fd9;
+		border-radius: 18px;
+		border-bottom-right-radius: 4px;
+		padding: 10px 13px;
+		margin-bottom: 12px;
+	}
+
+	.me-t {
+		font-size: 15px;
+		color: #ffffff;
+		line-height: 22px;
+	}
+
+	.sys {
+		align-self: center;
+		background-color: #ffe9e9;
+		border-radius: 10px;
+		padding: 8px 12px;
+		margin-bottom: 12px;
+	}
+
+	.sys-t {
+		font-size: 13px;
+		color: #b3191b;
+		line-height: 20px;
+	}
+
+	.eg {
+		align-self: flex-start;
+		background-color: #e8f0ff;
+		border-radius: 16px;
+		padding: 7px 13px;
+		margin-bottom: 12px;
+	}
+
+	.eg-t {
+		font-size: 13px;
+		font-weight: bold;
+		color: #1b5fd9;
+	}
+
+	.wait {
+		font-size: 13px;
+		color: #6a7686;
+		margin-bottom: 12px;
+	}
+
+	/* parcel ticket */
+	.ticket {
+		align-items: center;
+		background-color: #f4f6fa;
+		border-radius: 12px;
+		padding: 8px 10px;
+		margin-top: 8px;
+	}
+
+	.label {
+		width: 78px;
+		height: 44px;
+		background-color: #ffffff;
+		border-width: 1.5px;
+		border-style: solid;
+		border-color: #111111;
+		border-radius: 4px;
+		align-items: center;
+		justify-content: center;
+	}
+
+	.label-t {
+		font-size: 24px;
+		font-weight: bold;
+		color: #111111;
+		line-height: 28px;
+	}
+
+	.where {
+		flex: 1;
+		margin-left: 12px;
+		margin-right: 8px;
+	}
+
+	.where-b {
+		font-size: 15px;
+		font-weight: bold;
+		color: #111a26;
+	}
+
+	.where-s {
+		font-size: 12px;
+		color: #6a7686;
+		margin-top: 2px;
+	}
+
+	.state {
+		padding: 3px 8px;
+		border-radius: 10px;
+		background-color: #e8f0ff;
+	}
+
+	.state-ok {
+		background-color: #e3f6ee;
+	}
+
+	.state-t {
+		font-size: 11px;
+		font-weight: bold;
+		color: #1b5fd9;
+	}
+
+	.state-t-ok {
+		color: #12855a;
+	}
+
+	.plan {
+		align-items: flex-start;
+		margin-top: 6px;
+	}
+
+	.num {
+		width: 20px;
+		height: 20px;
+		border-radius: 10px;
+		background-color: #e8f0ff;
+		align-items: center;
+		justify-content: center;
+		margin-right: 8px;
+		margin-top: 1px;
+	}
+
+	.num-t {
+		font-size: 11px;
+		font-weight: bold;
+		color: #1b5fd9;
+	}
+
+	.plan-t {
+		flex: 1;
+		font-size: 14px;
+		color: #111a26;
+		line-height: 21px;
+	}
+
+	/* input row */
+	.say {
+		align-items: flex-end;
+		background-color: #ffffff;
+		border-radius: 22px;
+		padding: 5px;
+	}
+
+	.say-input {
+		flex: 1;
+		min-height: 40px;
+		max-height: 110px;
+		font-size: 16px;
+		line-height: 22px;
+		color: #111a26;
+		padding: 9px 6px;
+	}
+
+	.icon-btn {
+		width: 40px;
+		height: 40px;
+		border-radius: 20px;
+		align-items: center;
+		justify-content: center;
+	}
+
+	.icon {
+		width: 26px;
+		height: 26px;
+	}
+
+	.hold {
+		flex: 1;
+		height: 40px;
+		border-radius: 20px;
+		background-color: #f4f6fa;
+		align-items: center;
+		justify-content: center;
+		margin: 0 4px;
+	}
+
+	.hold-on {
+		background-color: #d9dee6;
+	}
+
+	.hold-t {
+		font-size: 16px;
+		font-weight: bold;
+		color: #111a26;
+	}
+
+	.rec-mask {
+		position: absolute;
+		left: 0;
+		top: 0;
+		right: 0;
+		bottom: 0;
+		background-color: rgba(17, 26, 38, 0.55);
+		align-items: center;
+		justify-content: flex-end;
+		padding-bottom: 150px;
+	}
+
+	.rec-card {
+		width: 190px;
+		padding: 20px 16px 16px 16px;
+		border-radius: 22px;
+		background-color: #12855a;
+		align-items: center;
+		margin-bottom: 60px;
+	}
+
+	.rec-card-cancel {
+		background-color: #ef2b2d;
+	}
+
+	.rec-mic {
+		width: 40px;
+		height: 40px;
+	}
+
+	.rec-time {
+		font-size: 15px;
+		font-weight: bold;
+		color: #ffffff;
+		margin-top: 8px;
+	}
+
+	.bars {
+		align-items: center;
+		height: 36px;
+		margin-top: 8px;
+	}
+
+	.bar {
+		width: 5px;
+		border-radius: 3px;
+		background-color: rgba(255, 255, 255, 0.85);
+		margin: 0 3px;
+	}
+
+	.rec-cancel {
+		width: 64px;
+		height: 64px;
+		border-radius: 32px;
+		background-color: #ffffff;
+		align-items: center;
+		justify-content: center;
+		margin-bottom: 16px;
+	}
+
+	.rec-cancel-on {
+		width: 78px;
+		height: 78px;
+		border-radius: 39px;
+		background-color: #ef2b2d;
+	}
+
+	.rec-cancel-i {
+		width: 26px;
+		height: 26px;
+	}
+
+	.rec-hint {
+		font-size: 14px;
+		color: #ffffff;
+	}
+
+	.rec-hint-cancel {
+		color: #ffd2d2;
+		font-weight: bold;
+	}
+
+	.del {
+		width: 44px;
+		height: 44px;
+		border-radius: 22px;
+		align-items: center;
+		justify-content: center;
+		margin-right: -6px;
+	}
+
+	.del-i {
+		width: 18px;
+		height: 18px;
+	}
+
+	.tip {
+		font-size: 12px;
+		color: #9aa5b3;
+		margin-top: 6px;
+	}
+
+	.typing {
+		align-self: flex-start;
+		background-color: #ffffff;
+		border-radius: 18px;
+		border-top-left-radius: 4px;
+		padding: 10px 14px;
+		margin-bottom: 12px;
+	}
+
+	.typing-t {
+		font-size: 14px;
+		color: #6a7686;
+	}
+
+
+
+
+
+
+
+
+	.img-bubble {
+		align-self: flex-end;
+		border-radius: 14px;
+		overflow: hidden;
+		margin-bottom: 12px;
+	}
+
+	.thumb {
+		width: 150px;
+		height: 200px;
+	}
+
+	.send {
+		height: 40px;
+		padding: 0 16px;
+		border-radius: 11px;
+		background-color: #111a26;
+		align-items: center;
+		justify-content: center;
+		margin-left: 8px;
+	}
+
+	.send-t {
+		font-size: 14px;
+		font-weight: bold;
+		color: #ffffff;
+	}
+
+	/* shoot */
+	.shoot-hint {
+		align-items: center;
+		padding: 26px 18px;
+		border-width: 2px;
+		border-style: dashed;
+		border-color: #aeb7c2;
+		border-radius: 18px;
+		margin-bottom: 12px;
+	}
+
+	.shoot-b {
+		font-size: 20px;
+		font-weight: bold;
+		color: #111a26;
+		margin-top: 6px;
+	}
+
+	/* photo with the scan frame */
+	.photo {
+		align-self: center;
+		border-radius: 18px;
+		overflow: hidden;
+		background-color: #c9cfd7;
+		margin-bottom: 10px;
+	}
+
+	.photo-img {
+		position: absolute;
+		left: 0;
+		top: 0;
+	}
+
+	.tile {
+		position: absolute;
+		border-width: 3px;
+		border-style: solid;
+		border-color: #1b5fd9;
+		border-radius: 8px;
+		background-color: rgba(27, 95, 217, 0.14);
+		left: 0;
+		top: 0;
+		overflow: hidden;
+		transition-property: transform, width, height;
+		transition-duration: 350ms;
+		transition-timing-function: ease-out;
+	}
+
+	.scan-line {
+		position: absolute;
+		left: 0;
+		right: 0;
+		top: 0;
+		height: 6px;
+		background-color: rgba(255, 255, 255, 0.9);
+		transition-property: transform;
+		transition-duration: 650ms;
+		transition-timing-function: ease-in-out;
+	}
+
+	/* agent trace */
+	.line {
+		align-items: flex-start;
+		margin-bottom: 8px;
+	}
+
+	.line-turn {
+		background-color: #ffe9e9;
+		border-radius: 12px;
+		padding: 8px 10px 8px 8px;
+	}
+
+	.line-ask {
+		background-color: #fff1dc;
+		border-radius: 12px;
+		padding: 8px 10px 8px 8px;
+	}
+
+	.k {
+		width: 46px;
+		height: 20px;
+		border-radius: 6px;
+		background-color: #eceff4;
+		align-items: center;
+		justify-content: center;
+		margin-right: 10px;
+		margin-top: 1px;
+	}
+
+	.k-act {
+		background-color: #1b5fd9;
+	}
+
+	.k-see {
+		background-color: #e3f6ee;
+	}
+
+	.k-turn {
+		background-color: #ef2b2d;
+	}
+
+	.k-ask {
+		background-color: #b45f06;
+	}
+
+	.k-t {
+		font-size: 11px;
+		font-weight: bold;
+	}
+
+	.k-t-think {
+		color: #6a7686;
+	}
+
+	.k-t-see {
+		color: #12855a;
+	}
+
+	.k-t-light {
+		color: #ffffff;
+	}
+
+	.line-t {
+		flex: 1;
+		font-size: 14px;
+		color: #111a26;
+		line-height: 21px;
+	}
+
+	.line-t-think {
+		color: #6a7686;
+	}
+
+	.line-t-act {
+		color: #1b5fd9;
+		font-weight: bold;
+	}
+
+	.line-t-turn {
+		color: #8f1416;
+	}
+
+	.line-t-ask {
+		color: #7a4003;
+	}
+
+	/* result */
+	.zoom {
+		align-self: center;
+		height: 170px;
+		border-radius: 14px;
+		overflow: hidden;
+		background-color: #c9cfd7;
+		margin-bottom: 10px;
+	}
+
+	.zoom-img {
+		position: absolute;
+	}
+
+	.zoom-cap {
+		position: absolute;
+		left: 8px;
+		bottom: 8px;
+		background-color: rgba(17, 26, 38, 0.78);
+		border-radius: 6px;
+		padding: 2px 8px;
+	}
+
+	.zoom-cap-t {
+		font-size: 14px;
+		font-weight: bold;
+		color: #ffffff;
+	}
+
+	.stats {
+		margin-top: 2px;
+	}
+
+	.stat {
+		flex: 1;
+		align-items: center;
+		background-color: #f4f6fa;
+		border-radius: 12px;
+		padding: 8px 2px;
+		margin-right: 6px;
+	}
+
+	.stat-last {
+		margin-right: 0;
+	}
+
+	.stat-b {
+		font-size: 22px;
+		font-weight: bold;
+		color: #111a26;
+		line-height: 26px;
+	}
+
+	.stat-hot {
+		color: #ef2b2d;
+	}
+
+	.stat-s {
+		font-size: 11px;
+		color: #6a7686;
+	}
+
+	.allset {
+		align-items: center;
+		padding: 16px 14px;
+		border-radius: 18px;
+		background-color: #12855a;
+		margin-bottom: 12px;
+	}
+
+	.allset-b {
+		font-size: 20px;
+		font-weight: bold;
+		color: #ffffff;
+	}
+</style>
