@@ -81,17 +81,33 @@ def load_state():
     print(f"restored {len(tasks)} task(s), {len(photos)} photo run(s)", flush=True)
 
 
-_asr = {"model": None}
+_asr = {"model": None, "engine": ""}
 asr_lock = threading.Lock()
 
 
-def transcribe(audio):
-    """Speech to text with a local Whisper model (CPU, so it does not compete with the vision model for the GPU).
+def _sensevoice():
+    """SenseVoice-Small through sherpa-onnx, or None when it is not installed or not downloaded."""
+    d = cfg.get("sensevoice_dir") or ""
+    if not os.path.isfile(os.path.join(d, "model.int8.onnx")):
+        return None
+    try:
+        import sherpa_onnx
+    except ImportError:
+        return None
+    return sherpa_onnx.OfflineRecognizer.from_sense_voice(
+        model=os.path.join(d, "model.int8.onnx"), tokens=os.path.join(d, "tokens.txt"),
+        num_threads=4, language="zh", use_itn=True)
 
-    The model is loaded on first use. The prompt nudges it to write pickup codes as digits with hyphens;
-    whatever it writes, agent.spoken_to_written() later normalises spoken forms such as 八杠二杠五七二六.
+
+def transcribe(audio):
+    """Speech to text on this machine, on the CPU so it does not compete with the vision model for the GPU.
+
+    SenseVoice-Small is used when it is available: on the test recordings it was 10-25x faster than
+    Whisper small (0.1-0.4 s per phrase) and got the codes Whisper missed (8-2-9442 lost its 8, 5726
+    became 武器26). Whisper small is the fallback. Either way agent.spoken_to_written() later
+    normalises spoken forms such as 八杠二杠五七二六 or 8'2'9"4"4"2.
     """
-    from faster_whisper import WhisperModel, decode_audio      # ImportError here means "not installed"
+    from faster_whisper import decode_audio                     # audio decoding (any phone format)
     path = os.path.join(DATA, "voice_" + uuid.uuid4().hex[:8])
     with open(path, "wb") as f:
         f.write(audio)
@@ -104,21 +120,36 @@ def transcribe(audio):
             print(f"{time.strftime('%H:%M:%S')} voice: {seconds:.1f}s, peak {peak:.4f} -> silent", flush=True)
             return "", peak
         # phone mics can record very quietly; bring the loudest point up to 90% before recognising
-        samples = samples * min(0.9 / peak, 40.0)
+        samples = (samples * min(0.9 / peak, 40.0)).astype("float32")
+        t0 = time.time()
         with asr_lock:
             if _asr["model"] is None:
-                _asr["model"] = WhisperModel(cfg["asr"], device="cpu", compute_type="int8", download_root=cfg["asr_dir"])
-            # No example codes in the prompt: on a recording of room noise Whisper repeats its prompt,
-            # and example codes would then turn into parcels the person never asked for.
-            # The voice-activity filter drops stretches with no speech before recognition.
-            segments, _info = _asr["model"].transcribe(
-                samples, language="zh", beam_size=5, vad_filter=True,
-                condition_on_previous_text=False,
-                initial_prompt="以下是普通话，用简体中文书写，数字用阿拉伯数字。快递取件码写成“货架号-层号-四位数字”的格式，中间用短横线连接。")
-            kept = [s for s in segments if s.no_speech_prob < 0.6 and s.avg_logprob > -1.0]
-            text = "".join(s.text for s in kept).strip()
-        print(f"{time.strftime('%H:%M:%S')} voice: {seconds:.1f}s, peak {peak:.4f}, "
-              f"{len(kept)} speech segment(s) -> {text!r}", flush=True)
+                _asr["model"] = _sensevoice()
+                _asr["engine"] = "sensevoice"
+                if _asr["model"] is None:
+                    from faster_whisper import WhisperModel             # ImportError here means "not installed"
+                    _asr["model"] = WhisperModel(cfg["asr"], device="cpu", compute_type="int8", download_root=cfg["asr_dir"])
+                    _asr["engine"] = "whisper-" + cfg["asr"]
+            if _asr["engine"] == "sensevoice":
+                stream = _asr["model"].create_stream()
+                stream.accept_waveform(16000, samples)
+                _asr["model"].decode_stream(stream)
+                text = stream.result.text.strip()
+                kept = [text]
+            else:
+                # No example codes in the prompt: on a recording of room noise Whisper repeats its prompt,
+                # and example codes would then turn into parcels the person never asked for.
+                # The voice-activity filter drops stretches with no speech before recognition.
+                segments, _info = _asr["model"].transcribe(
+                    samples, language="zh", beam_size=5, vad_filter=True,
+                    condition_on_previous_text=False,
+                    initial_prompt="以下是普通话，用简体中文书写，数字用阿拉伯数字。快递取件码写成“货架号-层号-四位数字”的格式，中间用短横线连接。")
+                kept = [s for s in segments if s.no_speech_prob < 0.6 and s.avg_logprob > -1.0]
+                text = "".join(s.text for s in kept).strip()
+        if not re.search(r"\w", text):
+            text = ""                                   # only punctuation (room noise): nothing was said
+        print(f"{time.strftime('%H:%M:%S')} voice: {seconds:.1f}s, peak {peak:.4f}, {_asr['engine']} "
+              f"{time.time() - t0:.2f}s -> {text!r}", flush=True)
         return text, peak
     finally:
         os.replace(path, os.path.join(DATA, "last_voice.bin"))     # kept for troubleshooting, overwritten each time
@@ -361,9 +392,11 @@ def main():
     ap.add_argument("--model", default="minicpm-v")
     ap.add_argument("--key", default=os.environ.get("PARCEL_KEY", ""), help="access key required from clients")
     ap.add_argument("--asr", default="small", help="Whisper model size for voice input (tiny, base, small, ...)")
+    ap.add_argument("--sensevoice-dir", default=os.path.join(HERE, "data", "sensevoice"),
+                    help="folder with SenseVoice-Small model.int8.onnx + tokens.txt (sherpa-onnx); used for voice when present")
     ap.add_argument("--asr-dir", default=os.path.join(HERE, "data", "whisper"), help="where the Whisper model is kept")
     a = ap.parse_args()
-    cfg.update(llm=a.llm, model=a.model, key=a.key, asr=a.asr, asr_dir=a.asr_dir)
+    cfg.update(llm=a.llm, model=a.model, key=a.key, asr=a.asr, asr_dir=a.asr_dir, sensevoice_dir=a.sensevoice_dir)
     os.makedirs(DATA, exist_ok=True)
     load_state()
     print(f"parcel finder on http://{a.host}:{a.port}  (model {a.model} at {a.llm}, key {'set' if a.key else 'not set'})")

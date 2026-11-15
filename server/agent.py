@@ -115,10 +115,24 @@ def _near(a, b):
 
 SHELF_RE = re.compile(r"(\d{1,3})\s*号?\s*货架\s*第?\s*(\d{1,2})\s*层\D{0,8}?(\d{4})(?!\d)")
 KEYWORD_RE = re.compile(r"(?:取件码|取货码|提货码|取件号|取件编号)\s*[:：是为]?\s*([A-Za-z]?\d[\d\-]{2,10}\d)")
+NOT_CODE_RE = re.compile(r"验证码|校验码|密码|电话|手机|尾号|联系")
 ALONE_RE = re.compile(r"(?<![\d:：.\-])(\d{4})(?![\d:：.\-])")
 _ZH = {"零": "0", "〇": "0", "一": "1", "幺": "1", "二": "2", "两": "2", "三": "3", "四": "4",
        "五": "5", "六": "6", "七": "7", "八": "8", "九": "9"}
 _ZH_RUN = re.compile(r"[零〇一幺二两三四五六七八九十]+")
+
+
+# speech recognition sometimes writes a code said digit by digit as single digits with marks
+# between them: 8'2'9"4"4"2, 8 2 9 4 4 2, 8.2.9.4.4.2. The last four digits are the code.
+_SPELLED = re.compile(r"(?<![\d\-])\d(?:\s*[\x22\x27‘’“”′″‧·•．.,，、]\s*\d|\s+\d){3,6}(?![\d\-])")
+
+
+def _regroup(m):
+    d = re.findall(r"\d", m.group(0))
+    head, tail = d[:-4], "".join(d[-4:])
+    if len(head) == 3:
+        return f"{head[0]}{head[1]}-{head[2]}-{tail}"      # 12-3-0045: shelves can be two digits, levels one
+    return "-".join(head + [tail])
 
 
 def spoken_to_written(text):
@@ -145,9 +159,12 @@ def spoken_to_written(text):
             return str((int(_ZH[a]) if a else 1) * 10 + (int(_ZH[b[0]]) if b else 0)) + "".join(_ZH[c] for c in b[1:])
         return "".join(_ZH[c] for c in run)
     t = _ZH_RUN.sub(convert, text)
+    t = _SPELLED.sub(_regroup, t)
     t = re.sub(r"\s*(?:横杠|杠|横|减|－|—|–)\s*", "-", t)
     # speech recognition sometimes writes the hyphen as a dot or a prime: 6′1′1402, 8‧2‧5726
     t = re.sub(r"(?<=\d)\s*[‧·•′’'．]\s*(?=\d)", "-", t)
+    # ... or drops the second hyphen: 8-29442 -> 8-2-9442 (a level is one digit, the code four)
+    t = re.sub(r"(?<![\d\-])(\d{1,3})-(\d)(\d{4})(?![\d\-])", r"\1-\2-\3", t)
     # ... or breaks the code before its last four digits: 8-2,1032
     return re.sub(r"(?<![\d\-])(\d{1,3}-\d{1,2})\s*[,，、\s]\s*(\d{4})(?!\d)", r"\1-\2", t)
 
@@ -174,8 +191,13 @@ def parse_request(brain, text):
         if known is None or (shelf and not known["shelf"]) or (level and not known["level"]):
             found[tail] = make_parcel(shelf, level, tail)
 
-    for a, b, c in CODE_RE.findall(plain):
-        add(int(a), int(b), c)
+    def labelled_other(start):
+        # "验证码 482913", "手机尾号 1234": a number named as something else is never a pickup code
+        return NOT_CODE_RE.search(plain[max(0, start - 8):start]) is not None
+
+    for m in CODE_RE.finditer(plain):
+        if not labelled_other(m.start()):
+            add(int(m.group(1)), int(m.group(2)), m.group(3))
     for a, b, c in SHELF_RE.findall(plain):
         add(int(a), int(b), c)
     for token in KEYWORD_RE.findall(plain):
@@ -189,8 +211,9 @@ def parse_request(brain, text):
             add(0, 0, tail)
     own_words = len(plain) <= 40 and "【" not in plain
     if own_words:
-        for tail in ALONE_RE.findall(plain):
-            add(0, 0, tail)
+        for m in ALONE_RE.finditer(plain):
+            if not labelled_other(m.start()):
+                add(0, 0, m.group(1))
 
     source = "pattern"
     answer = _json(brain.ask(P_REQUEST + plain, max_tokens=160))
@@ -204,7 +227,7 @@ def parse_request(brain, text):
             # the number must stand in the text as a whole (never invent a parcel), and must not be
             # a verification code, phone number or the like
             at = re.search(r"(?<!\d)" + parts[-1] + r"(?!\d)", plain)
-            if at is None or re.search(r"验证码|校验码|密码|电话|手机|尾号|联系", plain[max(0, at.start() - 8):at.start()]):
+            if at is None or NOT_CODE_RE.search(plain[max(0, at.start() - 8):at.start()]):
                 continue
             if tail in found:
                 source = "model"

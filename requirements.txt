@@ -1,2 +1,3 @@
 pillow>=10
-faster-whisper>=1.0  # optional: voice input
+sherpa-onnx>=1.10    # optional: voice input with SenseVoice-Small
+faster-whisper>=1.0  # optional: audio decoding, Whisper fallback

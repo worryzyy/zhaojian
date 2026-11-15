@@ -53,6 +53,7 @@
 - **找一件**：约 6 次模型调用，**8～11 秒**（质量检查、读号牌、估计位置、读块、指位置、复核）
 - **找两件**：`8-2-5726` + `9442` 一次拍照全部找到，12 次调用，**19.1 秒**；`6-1-0498` + 只说了后四位的 `1032`，**10.9 秒**（两件离得越远、越需要复核，用时越长）
 - **指错后重新定位**：真实出错的一次（找 9107，复核读到 1234），原来的逐块缩小要 16 次调用、23.2 秒；改成"切四份、就近读、小范围重新指"后 9 次调用、15.4 秒，圈的位置正确。在 6 个样例上单独比较这一步：4 次调用约 4 秒，全部定位正确，原办法要 10～19 次调用
+- **语音**：同一批 11 段录音，SenseVoice-Small 每段 0.1～0.4 秒，全部识别对；Whisper small 每段 1.6～10 秒，有 3 段把取件码听错（`8-2-9442` 丢了 8、`5726` 听成"武器26"）。语音识别不属于 MiniCPM，只负责把话变成文字
 - **模糊照片**：`samples/shelf_blurry.jpg` 会被判为读不清，Agent 请你重拍，而不是给出错误位置
 - **模型占用**：模型文件 1.1 GB + 视觉投影 0.86 GB，`--ctx-size 4096`
 
@@ -65,7 +66,7 @@
 浏览器页面 web/index.html           ─┼─ 局域网 HTTP ─→ server/server.py ─→ llama-server
                                      │                  （Agent 逻辑在       （MiniCPM-V 4.7 1B）
                                      │                    server/agent.py）
-                                     └─ 语音：faster-whisper，同样在电脑本地
+                                     └─ 语音：SenseVoice-Small（sherpa-onnx），同样在电脑本地
 ```
 
 | 目录 | 内容 |
@@ -101,7 +102,7 @@ python server.py --port 18600 --key 你自己设一个口令
 
 - 服务监听 `0.0.0.0`，同一局域网的手机可以连。Windows 上需要在防火墙放行这个端口。
 - `--key` 是访问口令，手机端要填同一个。
-- 语音输入需要 `faster-whisper`（已在 requirements 里），首次使用会下载 Whisper `small` 模型；可以用 `--asr-dir` 指定已下载的位置。不装也能用，只是不能按住说话。
+- 语音输入用 [SenseVoice-Small](https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2024-07-17.tar.bz2)（int8，解压后约 240 MB），用 `--sensevoice-dir` 指向解压出的文件夹（含 `model.int8.onnx` 和 `tokens.txt`）。没有它时自动退回 Whisper `small`（首次使用会下载，可用 `--asr-dir` 指定位置）。都不装也能用，只是不能按住说话。
 - 运行数据（照片、取件记录）存在 `server/data/`，不会上传到任何地方。
 
 ### 3. 用起来
